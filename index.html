@@ -1,0 +1,899 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Relax in Zona</title>
+<meta name="theme-color" content="#92211c">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Relax in Zona">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&display=swap">
+<style>*,*::before,*::after{box-sizing:border-box}body{margin:0}img{max-width:100%}[hidden]{display:none!important}:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}</style>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="config.js"></script>
+<script src="firebase-shim.js"></script>
+</head>
+<body>
+<style>
+/* Layout: app da campo a una colonna, barra in alto, schede a pannello, tab in basso. Leggibilità prima di tutto. */
+:root{
+  --bg:#f6f3f3; --surface:#ffffff; --surface-2:#efe8e9; --line:#ddd2d4;
+  --fg:#221719; --muted:#6c5d60;
+  --accent:#92211c; --accent-fg:#ffffff; --accent-soft:#f5e0de;
+  --e1:#a85d00; --e1-bg:#fbebd3;     /* richiamare */
+  --e2:#1f5fae; --e2-bg:#dde8f8;     /* inviare */
+  --e3:#6b4c9a; --e3-bg:#ebe3f6;     /* ci richiama */
+  --warn:#b42318; --warn-bg:#fde4e1;
+  --ok:#2c7a4b; --ok-bg:#dcf1e3;
+  --f-display:"Bricolage Grotesque", "Trebuchet MS", system-ui, sans-serif;
+  --f-body:"Atkinson Hyperlegible", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --r:12px; --tabh:64px; --brand:#92211c; --brand-fg:#ffffff; --test:#a85d00;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#171112; --surface:#21181a; --surface-2:#2c2124; --line:#3d2e31;
+  --fg:#f1e9ea; --muted:#b19fa2;
+  --accent:#e0889a; --accent-fg:#2a0a10; --accent-soft:#3e1d24;
+  --e1:#f0a64a; --e1-bg:#3a2a12; --e2:#7fb1f0; --e2-bg:#162a44; --e3:#bba1e6; --e3-bg:#2b2240;
+  --warn:#ff8a7a; --warn-bg:#3d1914; --ok:#6fd39a; --ok-bg:#15301f; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#171112; --surface:#21181a; --surface-2:#2c2124; --line:#3d2e31;
+  --fg:#f1e9ea; --muted:#b19fa2;
+  --accent:#e0889a; --accent-fg:#2a0a10; --accent-soft:#3e1d24;
+  --e1:#f0a64a; --e1-bg:#3a2a12; --e2:#7fb1f0; --e2-bg:#162a44; --e3:#bba1e6; --e3-bg:#2b2240;
+  --warn:#ff8a7a; --warn-bg:#3d1914; --ok:#6fd39a; --ok-bg:#15301f; color-scheme:dark}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font:16px/1.45 var(--f-body);-webkit-tap-highlight-color:transparent}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:30;background:var(--brand)}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.gut{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+
+/* top bar */
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--brand);color:var(--brand-fg)}
+:root:not([data-theme="light"]) .top{}
+.top-in{display:flex;align-items:center;gap:12px;padding-block:12px;max-width:760px;margin:0 auto}
+.brand{font-family:var(--f-display);font-weight:800;font-size:1.3rem;letter-spacing:-.01em;line-height:1;flex:1;min-width:0}
+.logo{display:block;height:34px;width:auto;max-width:100%;filter:brightness(0) invert(1)}
+.is-test .logo{filter:brightness(0) invert(1)}
+.brand small{display:block;font-family:var(--f-body);font-weight:400;font-size:.78rem;opacity:.8;margin-top:3px;letter-spacing:0}
+.who{border:1.5px solid currentColor;background:transparent;border-radius:999px;padding:6px 12px;font-weight:700;font-size:.9rem;white-space:nowrap;color:inherit}
+.iconbtn{border:0;background:transparent;color:inherit;padding:6px;border-radius:8px;display:grid;place-items:center}
+.iconbtn svg{width:24px;height:24px}
+
+main{max-width:760px;margin:0 auto;padding-block:16px calc(var(--tabh) + 96px + env(safe-area-inset-bottom,0px))}
+.view{display:flex;flex-direction:column;gap:14px}
+
+.banner{border-radius:var(--r);padding:12px 14px;background:var(--warn-bg);color:var(--warn);font-weight:700;font-size:.92rem}
+
+/* search + chips */
+.search{display:flex;align-items:center;gap:8px;background:var(--surface);border:1.5px solid var(--line);border-radius:var(--r);padding:0 12px}
+.search svg{width:20px;height:20px;color:var(--muted);flex:none}
+.search input{border:0;background:transparent;padding:12px 0;width:100%;min-width:0;outline:none}
+.chips{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;border:1.5px solid var(--line);background:var(--surface);border-radius:999px;padding:7px 13px;font-size:.9rem;font-weight:700;color:var(--muted);display:flex;gap:6px;align-items:center}
+.chip b{font-variant-numeric:tabular-nums;background:var(--surface-2);border-radius:999px;padding:0 7px;font-size:.8rem;color:var(--fg)}
+.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.chip[aria-pressed="true"] b{background:rgba(255,255,255,.22);color:inherit}
+
+/* list rows */
+.list{display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.row{display:grid;grid-template-columns:1fr auto;gap:4px 12px;padding:13px 14px;border:0;border-bottom:1px solid var(--line);background:transparent;text-align:left;width:100%}
+.row:last-child{border-bottom:0}
+.row:active{background:var(--surface-2)}
+.row .name{font-weight:700;font-size:1.05rem;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .meta{grid-column:1/-1;color:var(--muted);font-size:.88rem;display:flex;flex-wrap:wrap;gap:4px 10px;min-width:0}
+.row .side{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.when{font-size:.82rem;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.when.late{color:var(--warn)} .when.today{color:var(--e1)} .when.soon{color:var(--muted)}
+.idle{color:var(--warn);font-weight:700}
+
+.pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:2px 10px;font-size:.78rem;font-weight:700;white-space:nowrap}
+.pill i{width:8px;height:8px;border-radius:50%;background:currentColor;display:inline-block}
+.p1{color:var(--e1);background:var(--e1-bg)} .p2{color:var(--e2);background:var(--e2-bg)} .p3{color:var(--e3);background:var(--e3-bg)} .p0{color:var(--muted);background:var(--surface-2)} .pok{color:var(--ok);background:var(--ok-bg)}
+.tag{font-size:.78rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+
+.empty{text-align:center;padding:36px 20px;color:var(--muted);background:var(--surface);border:1.5px dashed var(--line);border-radius:var(--r)}
+.empty h3{font-family:var(--f-display);color:var(--fg);margin:0 0 6px;font-size:1.2rem}
+.empty p{margin:0 auto;max-width:34ch}
+
+/* zone browser */
+.crumbs{display:flex;flex-wrap:wrap;align-items:center;gap:4px;font-weight:700}
+.crumbs button{border:0;background:var(--surface-2);border-radius:8px;padding:5px 10px;color:var(--accent);font-weight:700}
+.crumbs span{color:var(--muted)}
+.lvl-h{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.lvl-h h2{font-family:var(--f-display);font-weight:800;font-size:1.55rem;margin:0;letter-spacing:-.01em;text-wrap:balance;min-width:0}
+.lvl-h .tag{flex:none}
+.grow{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.count{font-variant-numeric:tabular-nums;color:var(--muted);font-size:.9rem;white-space:nowrap}
+.chev{color:var(--muted);font-size:1.3rem;line-height:1}
+.civici{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:10px}
+.civ{border:1.5px solid var(--line);background:var(--surface);border-radius:var(--r);padding:12px 8px 10px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:4px}
+.civ .n{font-family:var(--f-display);font-weight:800;font-size:1.6rem;line-height:1;font-variant-numeric:tabular-nums}
+.civ .s{font-size:.72rem;color:var(--muted);font-weight:700}
+.civ.has{border-color:var(--e1)}
+.civ.add{border-style:dashed;color:var(--accent);justify-content:center;font-weight:700}
+
+/* tabbar + fab */
+.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--surface);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px)}
+.tabbar-in{display:grid;grid-template-columns:1fr 1fr 1fr;max-width:760px;margin:0 auto;height:var(--tabh)}
+.tab{border:0;background:transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:.78rem;font-weight:700;color:var(--muted)}
+.tab svg{width:24px;height:24px}
+.tab[aria-current="page"]{color:var(--accent)}
+.fab{position:fixed;z-index:21;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(var(--tabh) + 16px + env(safe-area-inset-bottom,0px));border:0;background:var(--accent);color:var(--accent-fg);border-radius:999px;padding:14px 20px 14px 16px;font-weight:700;font-size:1rem;display:flex;align-items:center;gap:8px;box-shadow:0 6px 18px rgba(146,33,28,.35)}
+.fab svg{width:22px;height:22px}
+
+/* sheets */
+.sheet{position:fixed;inset:0;z-index:40;background:var(--bg);display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px)}
+.sheet-h{display:flex;align-items:center;gap:8px;padding-block:10px;border-bottom:1px solid var(--line);background:var(--surface)}
+.sheet-h h2{flex:1;margin:0;font-family:var(--f-display);font-weight:800;font-size:1.2rem;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sheet-b{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.sheet-b-in{max-width:760px;margin:0 auto;padding-block:16px 32px;display:flex;flex-direction:column;gap:16px}
+.sheet-f{border-top:1px solid var(--line);background:var(--surface);padding-block:12px calc(12px + env(safe-area-inset-bottom,0px))}
+.sheet-f .in{max-width:760px;margin:0 auto;display:flex;gap:10px}
+
+fieldset{border:0;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
+legend{font-family:var(--f-display);font-weight:800;font-size:1.05rem;padding:0;margin-bottom:10px}
+.f{display:flex;flex-direction:column;gap:5px;min-width:0}
+.f > label,.lab{font-size:.85rem;font-weight:700;color:var(--muted)}
+.f input,.f select,.f textarea{width:100%;border:1.5px solid var(--line);background:var(--surface);border-radius:10px;padding:11px 12px;min-height:46px}
+.f textarea{min-height:84px;resize:vertical}
+.f input:focus,.f select:focus,.f textarea:focus{border-color:var(--accent);outline:none}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.four{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (min-width:560px){.four{grid-template-columns:1.2fr 1.2fr 1.6fr .8fr}}
+
+.seg{display:flex;flex-wrap:wrap;gap:8px}
+.seg button{border:1.5px solid var(--line);background:var(--surface);border-radius:10px;padding:10px 12px;font-weight:700;font-size:.92rem;flex:1 1 auto;min-height:44px}
+.seg button[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--fg)}
+.seg.esiti{flex-direction:column}
+.seg.esiti button{text-align:left;display:flex;gap:10px;align-items:center}
+.seg.esiti button .pill{flex:none}
+
+.btn{border:0;border-radius:10px;padding:13px 18px;font-weight:700;min-height:48px;flex:1}
+.btn.pri{background:var(--accent);color:var(--accent-fg)}
+.btn.sec{background:var(--surface-2);color:var(--fg);flex:0 0 auto}
+.btn.danger{background:transparent;color:var(--warn);border:1.5px solid var(--warn);flex:0 0 auto}
+.btn:disabled{opacity:.5}
+
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:0}
+.kv dt{color:var(--muted);font-size:.88rem;font-weight:700}
+.kv dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.phone{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.phone .num{font-size:1.3rem;font-weight:700;font-variant-numeric:tabular-nums;user-select:all}
+.phone a{border-radius:999px;padding:6px 12px;font-weight:700;font-size:.88rem;text-decoration:none;background:var(--accent-soft);color:var(--fg)}
+.hist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.hist li{padding:10px 0 10px 16px;border-left:2px solid var(--line);position:relative}
+.hist li::before{content:"";position:absolute;left:-6px;top:15px;width:10px;height:10px;border-radius:50%;background:var(--accent)}
+.hist .d{font-size:.8rem;color:var(--muted);font-weight:700;font-variant-numeric:tabular-nums}
+.linkrow{border:1.5px solid var(--line);background:var(--surface);border-radius:10px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;text-align:left;font-weight:700}
+.linkrow span{min-width:0}
+.hint{font-size:.85rem;color:var(--muted);margin:0}
+.mk{display:flex;flex-direction:column;gap:10px;border:1.5px solid var(--line);border-radius:var(--r);padding:12px;background:var(--surface)}
+.mk-h{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.mk-h b{font-family:var(--f-display);font-weight:800}
+.x{border:0;background:transparent;color:var(--warn);font-weight:700;padding:6px 8px;border-radius:8px}
+.badges{display:flex;gap:4px;flex-wrap:wrap;justify-content:center}
+.bd{font-size:.68rem;font-weight:700;border-radius:6px;padding:1px 6px}
+.bd.v{color:var(--e1);background:var(--e1-bg)} .bd.a{color:var(--e2);background:var(--e2-bg)} .bd.g{color:var(--muted);background:var(--surface-2)}
+.req{color:var(--warn)}
+.testb{display:flex;align-items:center;gap:12px;background:var(--e1-bg);color:var(--e1)}
+.testb span{flex:1;min-width:0}
+.is-test .top,.is-test body::before{background:var(--test)}
+.is-test .brand small::after{content:" · PROVA";font-weight:700}
+.check{display:flex;align-items:center;gap:12px;border:1.5px solid var(--line);background:var(--surface);border-radius:10px;padding:12px;font-weight:700;cursor:pointer}
+.check input{width:22px;height:22px;accent-color:var(--accent);flex:none;margin:0}
+.check small{display:block;font-weight:400;color:var(--muted);font-size:.84rem}
+.unk{font-style:italic;color:var(--muted)}
+.photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
+.ph{position:relative;aspect-ratio:1;max-width:100%;border-radius:10px;overflow:hidden;background:var(--surface-2);border:0;padding:0}
+.ph img,.ph-open img{width:100%;height:100%;object-fit:cover;display:block}
+.ph-open{border:0;padding:0;background:transparent;width:100%;height:100%;display:block}
+.ph.broken::after{content:"Foto non visibile";position:absolute;inset:0;display:grid;place-items:center;font-size:.72rem;color:var(--muted);text-align:center;padding:6px}
+.ph.broken img{visibility:hidden}
+.ph-x{position:absolute;top:4px;right:4px;width:30px;height:30px;border-radius:50%;border:0;background:rgba(0,0,0,.6);color:#fff;font-size:1.1rem;line-height:1;display:grid;place-items:center}
+.camera{display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;text-align:center}
+.camera svg{width:20px;height:20px;flex:none}
+.up{color:var(--accent);font-weight:700}
+legend .count{font-family:var(--f-body);font-weight:400;margin-left:6px}
+.lb{position:fixed;inset:0;z-index:80;background:#000;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px)}
+.lb img{flex:1;min-height:0;width:100%;object-fit:contain}
+.lb-bar{display:flex;justify-content:space-between;align-items:center;gap:10px;color:#fff;padding-block:10px calc(10px + env(safe-area-inset-bottom,0px));font-size:.88rem}
+.lb-b{border:0;background:rgba(255,255,255,.16);color:#fff;width:44px;height:44px;border-radius:50%;font-size:1.5rem;line-height:1}
+
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--tabh) + 84px + env(safe-area-inset-bottom,0px));z-index:60;background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:999px;font-weight:700;font-size:.92rem;max-width:calc(100% - 32px);text-align:center}
+.confirm{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:var(--warn-bg);color:var(--warn);border-radius:10px;padding:10px 12px;font-weight:700}
+@media (prefers-reduced-motion:no-preference){.sheet{animation:up .18s ease-out}@keyframes up{from{transform:translateY(16px);opacity:.6}to{transform:none;opacity:1}}}
+
+.auth{position:fixed;inset:0;z-index:100;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:24px max(16px,env(safe-area-inset-left,0px))}
+.auth-in{width:100%;max-width:380px;display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center}
+.auth-logo{width:220px;max-width:80%;height:auto}
+.auth h1{font-family:var(--f-display);font-weight:800;margin:0;font-size:1.4rem;color:var(--brand)}
+.auth-form{width:100%;display:flex;flex-direction:column;gap:8px;text-align:left}
+.auth-form label{font-size:.85rem;font-weight:700;color:var(--muted)}
+.auth-form input{border:1.5px solid var(--line);background:var(--surface);border-radius:10px;padding:12px;min-height:48px;font:inherit;color:var(--fg)}
+.auth-form .btn{margin-top:8px;width:100%}
+.auth-err{min-height:1.2em;margin:4px 0 0;color:var(--warn);font-weight:700;font-size:.9rem}
+.auth-link{border:0;background:transparent;color:var(--brand);font-weight:700;padding:10px}
+.auth-note{color:var(--muted);font-size:.9rem;margin:0}
+</style>
+
+<header class="top"><div class="top-in gut">
+  <div class="brand"><img class="logo" src="logo.png" alt="Relax Immobiliare"><small id="sub">Relax in Zona · acquisizioni e stabili</small></div>
+  <button class="who" id="whoBtn" type="button">Chi sei?</button>
+  <button class="iconbtn" id="moreBtn" type="button" aria-label="Altro"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg></button>
+</div></header>
+
+<main class="gut" id="main"></main>
+
+<button class="fab" id="fab" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg><span id="fabTxt">Nuova acquisizione</span></button>
+
+<nav class="tabbar"><div class="tabbar-in">
+  <button class="tab" data-tab="oggi" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Oggi</button>
+  <button class="tab" data-tab="acq" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="4"/><path d="M2 21c0-4 3-6 7-6s7 2 7 6M17 11h5M19.5 8.5v5"/></svg>Acquisizioni</button>
+  <button class="tab" data-tab="zone" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V9l8-6 8 6v12"/><path d="M9 21v-6h6v6"/></svg>Zone</button>
+</div></nav>
+
+<div id="sheetRoot"></div>
+<div id="toastRoot"></div>
+<div id="lbRoot"></div>
+
+<script>
+(function(){
+"use strict";
+const DEFAULT_AGENTI = ["Pasquale","Marco","Antonio","Emanuela"];
+const MACRO = ["PN1","PN2","PN3","PN4","CENTRO","FRANCAVILLA","MONTESILVANO","FUORIZONA"];
+const TIPI_STAB = ["Casa singola","Piccola palazzina","Media palazzina","Grande palazzina"];
+const TIPO_SHORT = {"Casa singola":"Casa singola","Piccola palazzina":"Pal. piccola","Media palazzina":"Pal. media","Grande palazzina":"Pal. grande"};
+const ESITI = {
+  "1":{t:"Da richiamare",d:"Il cliente vuole essere ricontattato",c:"p1"},
+  "2":{t:"Da inviare",d:"Mandare mail, WhatsApp o documento",c:"p2"},
+  "3":{t:"Ci richiama lui",d:"Se non si fa sentire, lo riprendiamo noi",c:"p3"},
+  "0":{t:"Chiuso",d:"Nessuna azione in sospeso",c:"pok"}
+};
+const TIPI = ["Vendita","Affitto"];
+const USI = ["Residenziale","Commerciale"];
+const IDLE_DAYS = 60;
+
+const S = { tab:"oggi", acq:[], stabili:[], agenti:DEFAULT_AGENTI.slice(), me:"", q:"", filtro:"tutti", zf:"tutti", path:[], db:null, dl:null, offline:false, loaded:{a:false,s:false} };
+
+/* ---------- utils ---------- */
+const $ = (s,r=document)=>r.querySelector(s);
+const esc = s => String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const norm = s => String(s||"").trim().replace(/\s+/g," ");
+const key = s => norm(s).toLowerCase();
+const cap = s => norm(s).replace(/(^|[\s'’-])(\p{L})/gu,(m,a,b)=>a+b.toUpperCase());
+const civN = s => norm(s).toUpperCase();
+const macroOf = x => MACRO.includes(x.macrozona)?x.macrozona:(x.macrozona?"FUORIZONA":"");
+function todayISO(off=0){const d=new Date();d.setHours(12,0,0,0);d.setDate(d.getDate()+off);return d.toISOString().slice(0,10)}
+function days(a,b){return Math.round((new Date(b+"T12:00:00")-new Date(a+"T12:00:00"))/864e5)}
+function fmtD(iso){if(!iso)return"";const [y,m,d]=iso.slice(0,10).split("-");return `${d}/${m}/${y.slice(2)}`}
+function whenLabel(iso){
+  if(!iso)return null; const n=days(todayISO(),iso);
+  if(n<0)return{t:n===-1?"Scaduto ieri":`Scaduto da ${-n} gg`,c:"late"};
+  if(n===0)return{t:"Oggi",c:"today"}; if(n===1)return{t:"Domani",c:"soon"};
+  if(n<=14)return{t:`Tra ${n} giorni`,c:"soon"}; return{t:fmtD(iso),c:"soon"};
+}
+function idleDays(a){const last=a.ultimaAzione||a.creato; return last?days(last.slice(0,10),todayISO()):0}
+function lsGet(k){try{return localStorage.getItem(k)||""}catch(e){return""}}
+function lsSet(k,v){try{localStorage.setItem(k,v)}catch(e){}}
+function toast(msg){const r=$("#toastRoot");r.innerHTML=`<div class="toast" role="status">${esc(msg)}</div>`;clearTimeout(toast.t);toast.t=setTimeout(()=>r.innerHTML="",2600)}
+function addrOf(x){return [x.via?(cap(x.via)+(x.civico?" "+civN(x.civico):"")):"",macroOf(x)].filter(Boolean).join(" · ")}
+function digits(p){return String(p||"").replace(/[^\d+]/g,"")}
+function waNum(p){let d=digits(p).replace(/^\+/,"");if(d.length===10&&d[0]==="3")d="39"+d;return d}
+function sameCiv(a,b){return macroOf(a)===macroOf(b)&&key(a.via)===key(b.via)&&civN(a.civico)===civN(b.civico)}
+function mkCounts(s){const m=s.mercato||[];return{v:m.filter(x=>x.contratto==="Vendita").length,a:m.filter(x=>x.contratto==="Affitto").length,p:m.filter(x=>x.gestore==="Privato").length,ag:m.filter(x=>x.gestore==="Agenzia").length}}
+
+/* ---------- data ---------- */
+S.test = lsGet("riz-test")==="1";
+const C = name => S.test ? "prova_"+name : name;
+let UNSUB=[];
+function subscribe(){
+  UNSUB.forEach(u=>{try{u()}catch(e){}}); UNSUB=[];
+  S.acq=[];S.stabili=[];S.loaded={a:false,s:false};
+  const db=S.db; if(!db)return;
+  UNSUB.push(db.collection(C("acquisizioni")).limit(1000).onSnapshot(snap=>{
+    S.acq=snap.docs.map(d=>Object.assign({id:d.id},d.data())); S.loaded.a=true; render(); refreshSheet();
+  },()=>{S.offline=true;render()}));
+  UNSUB.push(db.collection(C("stabili")).limit(1000).onSnapshot(snap=>{
+    S.stabili=snap.docs.map(d=>Object.assign({id:d.id},d.data())); S.loaded.s=true; render(); refreshMore();
+  },()=>{S.offline=true;render()}));
+}
+function setTest(on){
+  S.test=on; lsSet("riz-test",on?"1":""); document.documentElement.classList.toggle("is-test",on);
+  S.path=[]; S.filtro="tutti"; S.zf="tutti"; S.q=""; subscribe(); render();
+}
+function refreshMore(){if(SH&&SH.type==="more")drawSheet(true)}
+async function seedTest(){
+  if(!S.test||!S.db)return;
+  const ag=S.agenti, now=new Date();
+  const iso=o=>{const d=new Date(now);d.setDate(d.getDate()+o);return d.toISOString()};
+  const day=o=>iso(o).slice(0,10);
+  const stab=[
+    {macrozona:"PN1",via:"Via Tiburtina Valeria",civico:"12",tipoStabile:"Media palazzina",commerciali:"Sì",garage:"Sì",amministratore:"Studio Esempio",ammTel:"085 000 0001",
+      mercato:[{contratto:"Vendita",gestore:"Privato",agenzia:"",piano:"2° piano",tel:"333 000 0001",note:"Cartello sul balcone (esempio)"},{contratto:"Affitto",gestore:"Agenzia",agenzia:"Agenzia Esempio",piano:"Piano terra",tel:"",note:"Negozio"}],note:"Scheda di esempio"},
+    {macrozona:"PN1",via:"Via Tiburtina Valeria",civico:"14",tipoStabile:"Piccola palazzina",commerciali:"No",garage:"Sì",mercato:[],note:"Scheda di esempio"},
+    {macrozona:"CENTRO",via:"Corso Umberto I",civico:"45",tipoStabile:"Grande palazzina",commerciali:"Sì",garage:"No",
+      mercato:[{contratto:"Vendita",gestore:"Agenzia",agenzia:"Agenzia Esempio",piano:"4° piano",tel:"",note:""}],note:"Scheda di esempio"},
+    {macrozona:"MONTESILVANO",via:"Via Vestina",civico:"8",tipoStabile:"Casa singola",commerciali:"No",garage:"Sì",
+      mercato:[{contratto:"Vendita",gestore:"Privato",agenzia:"",piano:"",tel:"",note:"Villetta con giardino (esempio)"}],note:"Scheda di esempio"}
+  ];
+  const acq=[
+    {nome:"Mario Esempio",telefono:"333 000 0011",tipo:"Vendita",uso:"Residenziale",macrozona:"PN1",via:"Via Tiburtina Valeria",civico:"12",descrizione:"Trilocale 2° piano (esempio)",esito:"1",richiama:day(0)},
+    {nome:"Laura Prova",telefono:"333 000 0022",tipo:"Affitto",uso:"Residenziale",macrozona:"CENTRO",via:"Corso Umberto I",civico:"45",descrizione:"Bilocale arredato (esempio)",esito:"2",richiama:""},
+    {nome:"",ignoto:true,telefono:"",tipo:"Vendita",uso:"Residenziale",macrozona:"MONTESILVANO",via:"Via Vestina",civico:"8",descrizione:"Villetta con cartello senza nome (esempio)",esito:"1",richiama:day(-2)},
+    {nome:"Giorgio Test",telefono:"333 000 0033",tipo:"Vendita",uso:"Commerciale",macrozona:"PN1",via:"Via Tiburtina Valeria",civico:"12",descrizione:"Negozio piano terra (esempio)",esito:"3",richiama:day(5),vecchio:true}
+  ];
+  try{
+    for(let i=0;i<stab.length;i++){await S.db.collection(C("stabili")).doc("esempio-"+(i+1)).set(Object.assign({agente:ag[i%ag.length],foto:[],aggiornato:iso(0)},stab[i]))}
+    for(let i=0;i<acq.length;i++){const a=acq[i],t=a.vecchio?iso(-75):iso(-i);delete a.vecchio;
+      await S.db.collection(C("acquisizioni")).doc("esempio-"+(i+1)).set(Object.assign({agente:ag[i%ag.length],note:"",foto:[],creato:t,ultimaAzione:t,storico:[{data:t,agente:ag[i%ag.length],esito:a.esito,nota:"Acquisizione inserita (esempio)"}]},a))}
+    toast("Dati di esempio caricati");
+  }catch(e){toast("Caricamento non riuscito")}
+}
+async function clearTest(){
+  if(!S.test||!S.db)return;
+  try{
+    for(const a of S.acq.slice())await window.__wt(S.db.collection(C("acquisizioni")).doc(a.id).delete());
+    for(const s of S.stabili.slice())await window.__wt(S.db.collection(C("stabili")).doc(s.id).delete());
+    toast("Dati di prova cancellati");
+  }catch(e){toast("Cancellazione non riuscita")}
+}
+async function boot(){
+  S.me = lsGet("riz-me");
+  S.tab = ["oggi","acq","zone"].includes(lsGet("riz-tab"))?lsGet("riz-tab"):"oggi";
+  render();
+  if(!window.claude||!window.claude.use){S.offline=true;render();return}
+  const db = await window.claude.use("db");
+  if(!db){S.offline=true;render();return}
+  S.db=db;
+  window.claude.use("downloads").then(d=>{S.dl=d}).catch(()=>{});
+  window.claude.use("assets").then(a=>{S.assets=a;if(SH&&(SH.type==="stab"||SH.type==="acqForm"))redrawForm()}).catch(()=>{});
+  subscribe();
+  db.doc("impostazioni/agenti").onSnapshot(s=>{
+    const n=s.exists&&Array.isArray(s.data().nomi)?s.data().nomi.filter(Boolean):null;
+    S.agenti = n&&n.length?n.slice():DEFAULT_AGENTI.slice(); render();
+  },()=>{});
+}
+async function save(ref,body,merge){
+  if(!S.db){toast("Archivio non raggiungibile: dati non salvati");return false}
+  try{ await window.__wt(merge?ref.update(body):ref.set(body)); return true }
+  catch(e){
+    if(e&&e.code==="unavailable"){await new Promise(r=>setTimeout(r,600+Math.random()*600));try{merge?await ref.update(body):await ref.set(body);return true}catch(e2){}}
+    toast(e&&(e.code==="invalid_argument"||e.code==="permission-denied")?"Non hai i permessi per modificare questi dati":"Salvataggio non riuscito, riprova");
+    return false;
+  }
+}
+
+/* ---------- main render ---------- */
+function render(){
+  document.querySelectorAll(".tab").forEach(b=>b.setAttribute("aria-current",b.dataset.tab===S.tab?"page":"false"));
+  $("#whoBtn").textContent = S.me?S.me:"Chi sei?";
+  $("#fabTxt").textContent = S.tab==="zone"?"Nuovo civico":"Nuova acquisizione";
+  const m=$("#main"); const keepQ = document.activeElement&&document.activeElement.id==="q";
+  let h = S.offline?`<div class="banner">Non riesco a leggere l'archivio. Controlla la connessione e di aver fatto l'accesso, poi riapri l'app.</div>`:"";
+  if(S.test) h+=`<div class="banner testb"><span>Modalità prova: stai usando un archivio separato, i dati veri non vengono toccati.</span><button type="button" class="btn sec" data-testoff>Esci</button></div>`;
+  if(S.tab==="oggi") h+=viewOggi(); else if(S.tab==="acq") h+=viewAcq(); else h+=viewZone();
+  m.innerHTML=`<div class="view">${h}</div>`;
+  if(keepQ){const q=$("#q");if(q){q.focus();q.setSelectionRange(q.value.length,q.value.length)}}
+}
+const loading=()=>`<div class="empty"><p>Carico l'archivio…</p></div>`;
+
+function rowAcq(a){
+  const e=ESITI[a.esito||"0"]||ESITI["0"]; const w=(a.esito==="1"||a.esito==="3")?whenLabel(a.richiama):null;
+  const idle=idleDays(a)>IDLE_DAYS && a.esito!=="0";
+  const tipo=[a.tipo,a.uso].filter(Boolean).join(" · ");
+  return `<button class="row" type="button" data-open-acq="${esc(a.id)}">
+    <span class="name${a.nome?"":" unk"}">${esc(a.nome||(a.ignoto?"Cliente non noto":"Senza nome"))}</span>
+    <span class="side"><span class="pill ${e.c}"><i></i>${e.t}</span>${w?`<span class="when ${w.c}">${esc(w.t)}</span>`:""}</span>
+    <span class="meta">${a.gestito?`<span class="bd ${a.gestito==="Privato"?"v":"a"}">${a.gestito==="Privato"?"Privato":"Agenzia"+(a.agenziaNome?" "+esc(a.agenziaNome):"")}</span>`:""}${tipo?`<span>${esc(tipo)}</span>`:""}${addrOf(a)?`<span>${esc(addrOf(a))}</span>`:""}${a.agente?`<span>${esc(a.agente)}</span>`:""}${idle?`<span class="idle">Fermo da ${idleDays(a)} gg</span>`:""}</span>
+  </button>`;
+}
+
+function viewOggi(){
+  if(!S.loaded.a&&!S.offline) return loading();
+  const t=todayISO();
+  const mine=a=>!S.me||!a.agente||a.agente===S.me;
+  const due=S.acq.filter(a=>(a.esito==="1"||a.esito==="3")&&a.richiama&&a.richiama<=t&&mine(a)).sort((x,y)=>x.richiama.localeCompare(y.richiama));
+  const send=S.acq.filter(a=>a.esito==="2"&&mine(a));
+  const idle=S.acq.filter(a=>a.esito!=="0"&&idleDays(a)>IDLE_DAYS&&mine(a)).sort((x,y)=>idleDays(y)-idleDays(x));
+  const label=new Date().toLocaleDateString("it-IT",{weekday:"long",day:"numeric",month:"long"});
+  let h=`<div class="lvl-h"><h2>${esc(label.charAt(0).toUpperCase()+label.slice(1))}</h2><span class="tag">${S.me?esc(S.me):"Tutti gli agenti"}</span></div>`;
+  if(!S.me) h+=`<p class="hint">Tocca "Chi sei?" in alto e scegli il tuo nome: vedrai solo i tuoi clienti e le schede saranno firmate da te.</p>`;
+  const sec=(title,arr,empty)=>`<div class="grow"><span class="tag">${title}</span><span class="count">${arr.length}</span></div>`+(arr.length?`<div class="list">${arr.map(rowAcq).join("")}</div>`:`<p class="hint">${empty}</p>`);
+  if(!S.acq.length) return h+`<div class="empty"><h3>Nessuna acquisizione ancora</h3><p>Quando registri il primo contatto con "Nuova acquisizione", qui compare chi richiamare ogni giorno.</p></div>`;
+  h+=sec("Da richiamare oggi o in ritardo",due,"Nessuna chiamata in programma per oggi.");
+  h+=sec("Da inviare (mail, WhatsApp, documenti)",send,"Niente da inviare.");
+  h+=sec("Fermi da più di 2 mesi",idle,"Nessun contatto fermo da più di 2 mesi.");
+  return h;
+}
+
+function viewAcq(){
+  if(!S.loaded.a&&!S.offline) return loading();
+  const q=key(S.q);
+  const counts={tutti:S.acq.length,mie:S.acq.filter(a=>a.agente===S.me).length,"1":0,"2":0,"3":0,ferme:0,
+    privati:S.acq.filter(a=>a.gestito==="Privato").length,agenzie:S.acq.filter(a=>a.gestito==="Altra agenzia").length};
+  S.acq.forEach(a=>{if(counts[a.esito]!=null)counts[a.esito]++; if(a.esito!=="0"&&idleDays(a)>IDLE_DAYS)counts.ferme++});
+  const F=[["tutti","Tutte"],["mie","Mie"],["1","Da richiamare"],["2","Da inviare"],["3","Ci richiama"],["ferme","Ferme"],["privati","Privati"],["agenzie","Altre agenzie"]];
+  const arr=S.acq.filter(a=>{
+    if(S.filtro==="mie"&&a.agente!==S.me)return false;
+    if(["1","2","3"].includes(S.filtro)&&a.esito!==S.filtro)return false;
+    if(S.filtro==="ferme"&&!(a.esito!=="0"&&idleDays(a)>IDLE_DAYS))return false;
+    if(S.filtro==="privati"&&a.gestito!=="Privato")return false;
+    if(S.filtro==="agenzie"&&a.gestito!=="Altra agenzia")return false;
+    if(q){const hay=key([a.nome,a.telefono,a.macrozona,a.via,a.civico,a.descrizione,a.note,a.agente,a.tipo,a.uso,a.gestito,a.agenziaNome,a.agenziaTel].join(" "));if(!q.split(" ").every(w=>hay.includes(w)))return false}
+    return true;
+  }).sort((x,y)=>String(y.ultimaAzione||y.creato||"").localeCompare(String(x.ultimaAzione||x.creato||"")));
+  let h=`<label class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="q" type="search" placeholder="Cerca nome, telefono, via…" value="${esc(S.q)}" autocomplete="off"></label>`;
+  h+=`<div class="chips">${F.filter(f=>f[0]!=="mie"||S.me).map(f=>`<button class="chip" type="button" data-filtro="${f[0]}" aria-pressed="${S.filtro===f[0]}">${f[1]} <b>${counts[f[0]]}</b></button>`).join("")}</div>`;
+  if(!S.acq.length) return h+`<div class="empty"><h3>L'archivio è vuoto</h3><p>Tocca "Nuova acquisizione" per registrare il primo contatto: nome, telefono, indirizzo ed esito.</p></div>`;
+  if(!arr.length) return h+`<div class="empty"><p>Nessuna acquisizione corrisponde alla ricerca.</p></div>`;
+  return h+`<div class="list">${arr.map(rowAcq).join("")}</div>`;
+}
+
+/* ---------- zone: Macrozona → Via → Civico ---------- */
+function zoneFilter(s){
+  if(!s)return S.zf==="tutti";
+  const c=mkCounts(s);
+  if(S.zf==="vendita")return c.v>0; if(S.zf==="affitto")return c.a>0;
+  if(S.zf==="privati")return c.p>0; if(S.zf==="agenzie")return c.ag>0;
+  if(S.zf==="commerciali")return s.commerciali==="Sì"; if(S.zf==="garage")return s.garage==="Sì";
+  return true;
+}
+function tree(){
+  const T=new Map(MACRO.map(m=>[m,{name:m,kids:new Map()}]));
+  const add=(x,isStab)=>{
+    const mz=macroOf(x),v=cap(x.via),n=civN(x.civico); if(!mz||!v)return;
+    const Z=T.get(mz);
+    if(!Z.kids.has(key(v)))Z.kids.set(key(v),{name:v,kids:new Map()}); const V=Z.kids.get(key(v));
+    if(!n)return; if(!V.kids.has(n))V.kids.set(n,{name:n,stab:null,acq:[]}); const N=V.kids.get(n);
+    if(isStab)N.stab=x; else N.acq.push(x);
+  };
+  S.stabili.forEach(s=>add(s,true)); S.acq.forEach(a=>add(a,false));
+  if(S.zf!=="tutti"){ // prune
+    T.forEach(Z=>{Z.kids.forEach((V,vk)=>{V.kids.forEach((N,nk)=>{if(!zoneFilter(N.stab))V.kids.delete(nk)}); if(!V.kids.size)Z.kids.delete(vk)})});
+  }
+  return T;
+}
+function countCiv(node,d){if(d===2)return 1;let n=0;node.kids.forEach(k=>n+=countCiv(k,d+1));return n}
+function mkTotals(node,d){let v=0,a=0;const walk=(n,dd)=>{if(dd===2){if(n.stab){const c=mkCounts(n.stab);v+=c.v;a+=c.a}return}n.kids.forEach(k=>walk(k,dd+1))};walk(node,d);return{v,a}}
+const LV=["Macrozone","Vie","Civici"];
+function viewZone(){
+  if(!S.loaded.s&&!S.offline) return loading();
+  const T=tree(); let node={kids:T}; const names=[];
+  for(let i=0;i<S.path.length;i++){const nx=node.kids.get(S.path[i]);if(!nx){S.path=S.path.slice(0,i);break}node=nx;names.push(nx.name)}
+  const d=S.path.length;
+  const ZF=[["tutti","Tutti"],["vendita","In vendita"],["affitto","In affitto"],["privati","Privati"],["agenzie","Altre agenzie"],["commerciali","Locali comm."],["garage","Garage"]];
+  let h=`<div class="crumbs"><button type="button" data-crumb="0">Tutte le macrozone</button>${names.map((n,i)=>`<span>›</span><button type="button" data-crumb="${i+1}">${esc(n)}</button>`).join("")}</div>`;
+  h+=`<div class="lvl-h"><h2>${d?esc(names[d-1]):"Censimento"}</h2><span class="tag">${LV[d]}</span></div>`;
+  h+=`<div class="chips">${ZF.map(f=>`<button class="chip" type="button" data-zf="${f[0]}" aria-pressed="${S.zf===f[0]}">${f[1]}</button>`).join("")}</div>`;
+  const kids=[...node.kids.entries()];
+  if(d===0){
+    return h+`<div class="list">${kids.map(([k,v])=>{const n=countCiv(v,0),t=mkTotals(v,0);return `<button class="row" type="button" data-go="${esc(k)}"><span class="name">${esc(v.name)}</span><span class="side"><span class="chev">›</span></span><span class="meta"><span>${n} civic${n===1?"o":"i"}</span>${t.v?`<span class="bd v">${t.v} in vendita</span>`:""}${t.a?`<span class="bd a">${t.a} in affitto</span>`:""}</span></button>`}).join("")}</div>`
+      +(S.stabili.length?"":`<p class="hint">Nessun civico censito ancora. Apri una macrozona e tocca "Nuovo civico".</p>`);
+  }
+  if(d===1){
+    kids.sort((a,b)=>a[1].name.localeCompare(b[1].name,"it"));
+    if(!kids.length) return h+`<div class="empty"><h3>Nessuna via in ${esc(names[0])}</h3><p>${S.zf==="tutti"?"Tocca \"Nuovo civico\" per aprire la prima scheda di questa macrozona.":"Nessun civico corrisponde al filtro."}</p></div>`;
+    return h+`<div class="list">${kids.map(([k,v])=>{const n=countCiv(v,1),t=mkTotals(v,1);return `<button class="row" type="button" data-go="${esc(k)}"><span class="name">${esc(v.name)}</span><span class="side"><span class="chev">›</span></span><span class="meta"><span>${n} civic${n===1?"o":"i"}</span>${t.v?`<span class="bd v">${t.v} V</span>`:""}${t.a?`<span class="bd a">${t.a} A</span>`:""}</span></button>`}).join("")}</div>`;
+  }
+  kids.sort((a,b)=>(parseInt(a[1].name)||0)-(parseInt(b[1].name)||0)||a[1].name.localeCompare(b[1].name));
+  h+=`<div class="civici">${kids.map(([k,v])=>{const s=v.stab,nA=v.acq.length,c=s?mkCounts(s):{v:0,a:0};
+    return `<button class="civ ${nA?"has":""}" type="button" data-civ="${esc(k)}"><span class="n">${esc(v.name)}</span><span class="s">${s?esc(TIPO_SHORT[s.tipoStabile]||"Scheda"):"Senza scheda"}</span>
+    <span class="badges">${c.v?`<span class="bd v">${c.v} V</span>`:""}${c.a?`<span class="bd a">${c.a} A</span>`:""}${s&&s.commerciali==="Sì"?`<span class="bd g">Neg.</span>`:""}${s&&s.garage==="Sì"?`<span class="bd g">Box</span>`:""}${s&&s.ammTel?`<span class="bd g">Amm.</span>`:""}${s&&s.foto&&s.foto.length?`<span class="bd g">${s.foto.length} foto</span>`:""}${nA?`<span class="bd v">${nA} cont.</span>`:""}</span></button>`}).join("")}<button class="civ add" type="button" data-newciv>+ Civico</button></div>`;
+  h+=`<p class="hint">V = appartamenti in vendita · A = in affitto · Neg. = locali commerciali · Box = garage · Amm. = numero amministratore</p>`;
+  return h;
+}
+
+/* ---------- sheets ---------- */
+let SH=null;
+function closeSheet(){lightbox(null);SH=null;$("#sheetRoot").innerHTML="";document.body.style.overflow=""}
+function openSheet(o){SH=o;document.body.style.overflow="hidden";drawSheet()}
+function refreshSheet(){if(SH&&SH.type==="acqView")drawSheet(true)}
+function shell(title,body,foot){
+  return `<div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}">
+  <div class="sheet-h gut"><button class="iconbtn" type="button" data-close aria-label="Chiudi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button><h2>${esc(title)}</h2></div>
+  <div class="sheet-b"><div class="sheet-b-in gut">${body}</div></div>${foot?`<div class="sheet-f gut"><div class="in">${foot}</div></div>`:""}</div>`;
+}
+function viaList(){const all=[...S.stabili,...S.acq];return `<datalist id="dl-via">${[...new Set(all.map(x=>cap(x.via)).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"it")).map(v=>`<option value="${esc(v)}">`).join("")}</datalist>`}
+function macroSelect(id,val){return `<select id="${id}"><option value="">Scegli…</option>${MACRO.map(m=>`<option ${val===m?"selected":""}>${m}</option>`).join("")}</select>`}
+function agenteSelect(id,val){return `<select id="${id}"><option value="">Scegli…</option>${S.agenti.map(n=>`<option ${val===n?"selected":""}>${esc(n)}</option>`).join("")}</select>`}
+function addrFields(x,pfx){
+  return `<div class="f"><label for="${pfx}macro">Macrozona</label>${macroSelect(pfx+"macro",macroOf(x))}</div>
+  <div class="two" style="grid-template-columns:2.4fr 1fr">
+  <div class="f"><label for="${pfx}via">Via</label><input id="${pfx}via" list="dl-via" value="${esc(x.via||"")}" autocomplete="off" placeholder="Es. Via Tiburtina"></div>
+  <div class="f"><label for="${pfx}civico">Civico</label><input id="${pfx}civico" value="${esc(x.civico||"")}" autocomplete="off" placeholder="Es. 12/A"></div></div>`;
+}
+function segBtns(name,opts,val){return `<div class="seg" data-seg="${name}">${opts.map(o=>`<button type="button" data-v="${esc(o)}" aria-pressed="${val===o}">${esc(o)}</button>`).join("")}</div>`}
+function esitoBtns(val){return `<div class="seg esiti" data-seg="esito">${["1","2","3","0"].map(k=>`<button type="button" data-v="${k}" aria-pressed="${val===k}"><span class="pill ${ESITI[k].c}"><i></i>${ESITI[k].t}</span><span>${ESITI[k].d}</span></button>`).join("")}</div>`}
+function richiamaBlock(val,show){
+  const opts=[["0","Oggi"],["1","Domani"],["3","Tra 3 giorni"],["7","Tra una settimana"],["30","Tra un mese"]];
+  return `<div class="f" id="richWrap" ${show?"":"hidden"}><span class="lab">Richiama</span>
+  <div class="seg" data-seg="rich">${opts.map(o=>`<button type="button" data-v="${todayISO(+o[0])}" aria-pressed="${val===todayISO(+o[0])}">${o[1]}</button>`).join("")}</div>
+  <input id="f-richiama" type="date" value="${esc(val||"")}" aria-label="Data a scelta"></div>`;
+}
+/* ---------- foto ---------- */
+const imgSrc = id => window.__photoSrc ? window.__photoSrc(id) : "";
+function fotoStrip(list){
+  if(!list||!list.length) return "";
+  return `<div class="photos">${list.map((f,i)=>`<button type="button" class="ph" data-lb="${i}" aria-label="Apri foto ${i+1}"><img src="${imgSrc(f.id)}" data-fid="${esc(f.id)}" alt="" loading="lazy" onerror="this.parentNode.classList.add('broken')"></button>`).join("")}</div>`;
+}
+function fotoBlock(list){
+  list=list||[];
+  const busy=SH&&SH.uploading?`<p class="hint up">Caricamento di ${SH.uploading} foto in corso…</p>`:"";
+  const ctrl=S.assets?`<div class="two">
+      <label class="btn pri camera" for="ph-cam"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Scatta foto</label>
+      <label class="btn sec camera" for="ph-gal">Dalla galleria</label></div>
+      <input id="ph-cam" type="file" accept="image/*" capture="environment" hidden>
+      <input id="ph-gal" type="file" accept="image/*" multiple hidden>`
+    :`<p class="hint">Accedi con il tuo account per aggiungere foto.</p>`;
+  return `<fieldset><legend>Foto <span class="count">${list.length||""}</span></legend>
+    ${list.length?`<div class="photos">${list.map((f,i)=>`<div class="ph"><button type="button" class="ph-open" data-lb="${i}" aria-label="Apri foto ${i+1}"><img src="${imgSrc(f.id)}" data-fid="${esc(f.id)}" alt="" loading="lazy" onerror="this.parentNode.parentNode.classList.add('broken')"></button><button type="button" class="ph-x" data-phdel="${i}" aria-label="Togli foto ${i+1}">×</button></div>`).join("")}</div>`:`<p class="hint">Nessuna foto. Facciata, cartelli, citofono, interni.</p>`}
+    ${busy}${ctrl}
+    ${list.length?`<p class="hint">Le foto nuove restano nella scheda solo dopo aver toccato Salva.</p>`:""}
+  </fieldset>`;
+}
+async function shrink(file){
+  const MAX=1600;
+  try{
+    let src;
+    if(window.createImageBitmap){ try{src=await createImageBitmap(file,{imageOrientation:"from-image"})}catch(e){src=await createImageBitmap(file)} }
+    else { src=await new Promise((res,rej)=>{const im=new Image();im.onload=()=>res(im);im.onerror=rej;im.src=URL.createObjectURL(file)}) }
+    const w=src.width,h=src.height,k=Math.min(1,MAX/Math.max(w,h));
+    const c=document.createElement("canvas");c.width=Math.round(w*k);c.height=Math.round(h*k);
+    c.getContext("2d").drawImage(src,0,0,c.width,c.height);
+    const blob=await new Promise(r=>c.toBlob(r,"image/jpeg",0.82));
+    if(blob&&blob.size)return blob;
+  }catch(e){}
+  return ["image/jpeg","image/png","image/webp","image/gif"].includes(file.type)?file:null;
+}
+async function addPhotos(files){
+  if(!SH||!S.assets||!files||!files.length)return;
+  const sheet=SH; collectAny(); sheet.draft.foto=sheet.draft.foto||[];
+  sheet.uploading=(sheet.uploading||0)+files.length; redrawForm();
+  let fail=0;
+  for(const f of files){
+    try{
+      const blob=await shrink(f); if(!blob){fail++;continue}
+      let r; try{r=await S.assets.upload(blob,{type:blob.type||"image/jpeg"})}
+      catch(e){ if(e&&e.code==="store_unavailable"){await new Promise(x=>setTimeout(x,800));r=await S.assets.upload(blob,{type:blob.type||"image/jpeg"})} else throw e }
+      sheet.draft.foto.push({id:r.id,data:new Date().toISOString(),agente:S.me||""});
+    }catch(e){fail++; if(e&&e.code==="quota_or_state")toast("Spazio per le foto esaurito");}
+    finally{ sheet.uploading--; if(SH===sheet){collectAny();redrawForm()} }
+  }
+  if(fail)toast(fail===1?"Una foto non è stata caricata":`${fail} foto non caricate`);
+  else if(SH===sheet)toast("Foto aggiunta: ricordati di salvare");
+}
+function collectAny(){ if(!SH)return; if(SH.type==="stab")collectStab(); else if(SH.type==="acqForm")collectAcq(); }
+function redrawForm(){ if(SH&&(SH.type==="stab"||SH.type==="acqForm"))drawSheet(true) }
+function lightbox(list,i){
+  const r=$("#lbRoot"); if(!list||!list[i]){r.innerHTML="";return}
+  const f=list[i];
+  r.innerHTML=`<div class="lb" role="dialog" aria-modal="true" aria-label="Foto">
+    <img src="${imgSrc(f.id)}" data-fid="${esc(f.id)}" alt="">
+    <div class="lb-bar gut"><span>${i+1} di ${list.length}${f.data?" · "+fmtD(f.data):""}${f.agente?" · "+esc(f.agente):""}</span>
+    <span style="display:flex;gap:8px">${list.length>1?`<button type="button" class="lb-b" data-lbgo="${(i-1+list.length)%list.length}" aria-label="Precedente">‹</button><button type="button" class="lb-b" data-lbgo="${(i+1)%list.length}" aria-label="Successiva">›</button>`:""}<button type="button" class="lb-b" data-lbclose aria-label="Chiudi">×</button></span></div></div>`;
+  lightbox.list=list;
+}
+
+function mkRow(m,i){
+  return `<div class="mk"><div class="mk-h"><b>Immobile ${i+1}</b><button class="x" type="button" data-mkdel="${i}">Rimuovi</button></div>
+  <div class="two"><div class="f"><span class="lab">Contratto</span><div class="seg" data-mk="${i}" data-mkf="contratto">${["Vendita","Affitto"].map(o=>`<button type="button" data-v="${o}" aria-pressed="${m.contratto===o}">${o}</button>`).join("")}</div></div>
+  <div class="f"><span class="lab">Trattato da</span><div class="seg" data-mk="${i}" data-mkf="gestore">${["Privato","Agenzia"].map(o=>`<button type="button" data-v="${o}" aria-pressed="${m.gestore===o}">${o==="Agenzia"?"Altra agenzia":o}</button>`).join("")}</div></div></div>
+  <div class="two" ${m.gestore==="Agenzia"?"":"hidden"}><div class="f"><label for="mk-ag-${i}">Quale agenzia</label><input id="mk-ag-${i}" data-mki="${i}" data-mkf="agenzia" value="${esc(m.agenzia||"")}" autocomplete="off"></div>
+  <div class="f"><label for="mk-agtel-${i}">Tel. agenzia</label><input id="mk-agtel-${i}" data-mki="${i}" data-mkf="agTel" type="tel" inputmode="tel" value="${esc(m.agTel||"")}" autocomplete="off"></div></div>
+  <div class="two"><div class="f"><label for="mk-piano-${i}">Piano / interno</label><input id="mk-piano-${i}" data-mki="${i}" data-mkf="piano" value="${esc(m.piano||"")}" autocomplete="off"></div>
+  <div class="f"><label for="mk-tel-${i}">Telefono cartello</label><input id="mk-tel-${i}" data-mki="${i}" data-mkf="tel" type="tel" inputmode="tel" value="${esc(m.tel||"")}" autocomplete="off"></div></div>
+  <div class="f"><label for="mk-note-${i}">Note</label><input id="mk-note-${i}" data-mki="${i}" data-mkf="note" value="${esc(m.note||"")}" autocomplete="off" placeholder="Es. trilocale, cartello sul balcone"></div></div>`;
+}
+
+function drawSheet(soft){
+  if(!SH)return; const r=$("#sheetRoot"); let html="";
+  const sb=$(".sheet-b",r); const scroll = sb?sb.scrollTop:0;
+  const keepNota = soft&&$("#h-nota")?$("#h-nota").value:"";
+  if(SH.type==="acqForm"){
+    const a=SH.draft; const isNew=!SH.id;
+    html=shell(isNew?"Nuova acquisizione":"Modifica acquisizione",`
+    ${viaList()}
+    <div class="f"><label for="f-agente">Agente <span class="req">*</span></label>${agenteSelect("f-agente",a.agente||S.me)}</div>
+    <fieldset><legend>Cliente</legend>
+      <label class="check" for="f-ignoto"><input id="f-ignoto" type="checkbox" ${a.ignoto?"checked":""}><span>Non conosco nome e dati del cliente<small>Es. cartello senza nome, segnalazione di un vicino, immobile visto in zona</small></span></label>
+      <div id="clienteDati" class="f" style="gap:12px" ${a.ignoto?"hidden":""}>
+      <div class="f"><label for="f-nome">Nome e cognome</label><input id="f-nome" value="${esc(a.nome||"")}" autocomplete="off"></div>
+      <div class="f"><label for="f-tel">Telefono</label><input id="f-tel" type="tel" inputmode="tel" value="${esc(a.telefono||"")}" autocomplete="off"></div></div>
+      <div class="two"><div class="f"><span class="lab">Contratto</span>${segBtns("tipo",TIPI,a.tipo)}</div><div class="f"><span class="lab">Uso</span>${segBtns("uso",USI,a.uso)}</div></div>
+      <div class="f"><span class="lab">Immobile gestito da</span>${segBtns("gestito",["Privato","Altra agenzia"],a.gestito)}</div>
+      <div class="two" id="agWrap" ${a.gestito==="Altra agenzia"?"":"hidden"}><div class="f"><label for="f-agenzia">Quale agenzia</label><input id="f-agenzia" value="${esc(a.agenziaNome||"")}" autocomplete="off" placeholder="Nome dell'agenzia"></div>
+      <div class="f"><label for="f-agtel">Tel. agenzia</label><input id="f-agtel" type="tel" inputmode="tel" value="${esc(a.agenziaTel||"")}" autocomplete="off"></div></div>
+    </fieldset>
+    <fieldset><legend>Immobile</legend>${addrFields(a,"f-")}
+      <p class="hint">Macrozona, via e civico collegano il contatto alla scheda dello stabile.</p>
+      <div class="f"><label for="f-desc">Descrizione</label><textarea id="f-desc" placeholder="Es. trilocale 3° piano, 90 mq, da ristrutturare">${esc(a.descrizione||"")}</textarea></div>
+    </fieldset>
+    ${fotoBlock(a.foto)}
+    <fieldset><legend>Esito</legend>${esitoBtns(a.esito||"1")}${richiamaBlock(a.richiama||"",(a.esito||"1")==="1"||a.esito==="3")}
+      <div class="f"><label for="f-note">Note</label><textarea id="f-note">${esc(a.note||"")}</textarea></div>
+    </fieldset>
+    ${!isNew?`<div id="delZone"><button class="btn danger" type="button" data-askdel>Elimina acquisizione</button></div>`:""}`,
+    `<button class="btn pri" type="button" data-saveacq>${isNew?"Salva acquisizione":"Salva modifiche"}</button>`);
+  }
+  else if(SH.type==="acqView"){
+    const a=S.acq.find(x=>x.id===SH.id); if(!a){closeSheet();return}
+    const e=ESITI[a.esito||"0"]; const w=(a.esito==="1"||a.esito==="3")?whenLabel(a.richiama):null; const tel=norm(a.telefono);
+    const st=(a.storico||[]).slice().reverse(); const curE=SH.newEsito||a.esito||"1";
+    html=shell(a.nome||(a.ignoto?"Cliente non noto":"Acquisizione"),`
+    <div class="card" style="display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><span class="pill ${e.c}"><i></i>${e.t}</span>${w?`<span class="when ${w.c}">Richiama: ${esc(w.t)}</span>`:""}${idleDays(a)>IDLE_DAYS&&a.esito!=="0"?`<span class="idle">Fermo da ${idleDays(a)} gg</span>`:""}</div>
+      ${a.ignoto&&!a.nome&&!tel?`<p class="hint">Nome e recapiti del cliente non ancora noti. Quando li scopri, tocca "Modifica dati".</p>`:""}
+      ${tel?`<div class="phone"><span class="num">${esc(tel)}</span><a href="tel:${esc(digits(tel))}">Chiama</a><a href="https://wa.me/${esc(waNum(tel))}" target="_blank" rel="noopener">WhatsApp</a></div>`:""}
+      <dl class="kv">
+        ${[a.tipo,a.uso].filter(Boolean).length?`<dt>Tipo</dt><dd>${esc([a.tipo,a.uso].filter(Boolean).join(" · "))}</dd>`:""}
+        ${a.gestito?`<dt>Gestito da</dt><dd>${esc(a.gestito==="Privato"?"Privato":"Altra agenzia"+(a.agenziaNome?" ("+a.agenziaNome+")":""))}${a.gestito==="Altra agenzia"&&norm(a.agenziaTel)?`<div class="phone" style="margin-top:6px"><span class="num" style="font-size:1.05rem">${esc(norm(a.agenziaTel))}</span><a href="tel:${esc(digits(a.agenziaTel))}">Chiama</a><a href="https://wa.me/${esc(waNum(a.agenziaTel))}" target="_blank" rel="noopener">WhatsApp</a></div>`:""}</dd>`:""}
+        ${a.descrizione?`<dt>Immobile</dt><dd>${esc(a.descrizione)}</dd>`:""}
+        ${a.note?`<dt>Note</dt><dd>${esc(a.note)}</dd>`:""}
+        ${a.agente?`<dt>Agente</dt><dd>${esc(a.agente)}</dd>`:""}
+        <dt>Inserito</dt><dd>${fmtD(a.creato)}</dd>
+        <dt>Ultima azione</dt><dd>${fmtD(a.ultimaAzione||a.creato)}</dd>
+      </dl>
+      ${fotoStrip(a.foto)}
+      ${a.via&&a.civico&&macroOf(a)?`<button class="linkrow" type="button" data-gociv="1"><span>${esc(addrOf(a))}</span><span class="chev">›</span></button>`:(addrOf(a)?`<p class="hint">${esc(addrOf(a))}</p>`:"")}
+    </div>
+    <fieldset class="card"><legend>Registra attività</legend>
+      <div class="f"><label for="h-nota">Cosa è successo</label><textarea id="h-nota" placeholder="Es. chiamato, vuole valutazione a novembre"></textarea></div>
+      <span class="lab">Nuovo esito</span>${esitoBtns(curE)}
+      ${richiamaBlock(SH.newRich||"",curE==="1"||curE==="3")}
+      <button class="btn pri" type="button" data-addhist>Registra</button>
+    </fieldset>
+    <div><div class="grow" style="margin-bottom:8px"><span class="tag">Storico</span><span class="count">${st.length}</span></div>
+    ${st.length?`<ul class="hist">${st.map(s=>`<li><div class="d">${fmtD(s.data)}${s.agente?" · "+esc(s.agente):""}${s.esito&&ESITI[s.esito]?" · "+ESITI[s.esito].t:""}</div><div>${esc(s.nota||"")}</div></li>`).join("")}</ul>`:`<p class="hint">Nessuna attività registrata.</p>`}</div>`,
+    `<button class="btn sec" type="button" data-editacq style="flex:1">Modifica dati</button>`);
+  }
+  else if(SH.type==="stab"){
+    const s=SH.draft; const isNew=!SH.id; s.mercato=s.mercato||[];
+    const linked=S.acq.filter(a=>s.via&&s.civico&&sameCiv(a,s));
+    html=shell(isNew?"Nuovo civico":`${cap(s.via)} ${civN(s.civico)}`,`
+    ${viaList()}
+    <div class="f"><label for="s-agente">Agente <span class="req">*</span></label>${agenteSelect("s-agente",s.agente||S.me)}</div>
+    <fieldset><legend>Indirizzo</legend>${addrFields(s,"s-")}</fieldset>
+    <fieldset><legend>Stabile</legend>
+      <div class="f"><span class="lab">Tipo di stabile</span><div class="seg" data-seg="tipoStabile" style="display:grid;grid-template-columns:1fr 1fr">${TIPI_STAB.map(o=>`<button type="button" data-v="${o}" aria-pressed="${s.tipoStabile===o}">${o}</button>`).join("")}</div></div>
+      <div class="two"><div class="f"><span class="lab">Locali commerciali</span>${segBtns("commerciali",["Sì","No"],s.commerciali)}</div>
+      <div class="f"><span class="lab">Garage</span>${segBtns("garage",["Sì","No"],s.garage)}</div></div>
+    </fieldset>
+    ${fotoBlock(s.foto)}
+    <fieldset><legend>Appartamenti sul mercato</legend>
+      ${s.mercato.length?s.mercato.map(mkRow).join(""):`<p class="hint">Nessun appartamento in vendita o in affitto segnato.</p>`}
+      <button class="btn sec" type="button" data-mkadd style="width:100%">+ Aggiungi appartamento in vendita o affitto</button>
+    </fieldset>
+    <fieldset><legend>Note</legend>
+      <div class="two"><div class="f"><label for="s-amm">Amministratore</label><input id="s-amm" value="${esc(s.amministratore||"")}" autocomplete="off" placeholder="Nome o studio"></div>
+      <div class="f"><label for="s-ammtel">Tel. amministratore</label><input id="s-ammtel" type="tel" inputmode="tel" value="${esc(s.ammTel||"")}" autocomplete="off"></div></div>
+      ${norm(s.ammTel)?`<div class="phone"><span class="num">${esc(norm(s.ammTel))}</span><a href="tel:${esc(digits(s.ammTel))}">Chiama</a><a href="https://wa.me/${esc(waNum(s.ammTel))}" target="_blank" rel="noopener">WhatsApp</a></div>`:""}
+      <div class="f"><label for="s-note">Note sullo stabile</label><textarea id="s-note" placeholder="Es. citofono, portiere, stato della facciata">${esc(s.note||"")}</textarea></div>
+    </fieldset>
+    ${s.aggiornato?`<p class="hint">Ultimo aggiornamento ${fmtD(s.aggiornato)}${s.agente?" da "+esc(s.agente):""}</p>`:""}
+    ${!isNew||linked.length?`<div><div class="grow" style="margin-bottom:8px"><span class="tag">Contatti in questo civico</span><span class="count">${linked.length}</span></div>
+      ${linked.length?`<div class="list">${linked.map(rowAcq).join("")}</div>`:`<p class="hint">Nessun contatto collegato.</p>`}
+      <button class="btn sec" type="button" data-acqhere style="margin-top:10px;width:100%">+ Acquisizione in questo civico</button></div>`:""}
+    ${!isNew?`<div id="delZone"><button class="btn danger" type="button" data-askdel>Elimina scheda</button></div>`:""}`,
+    `<button class="btn pri" type="button" data-savestab>${isNew?"Salva civico":"Salva scheda"}</button>`);
+  }
+  else if(SH.type==="who"){
+    html=shell("Chi sei?",`<p class="hint">Il nome resta su questo telefono e compila da solo il campo Agente.</p>
+      <div class="seg esiti">${S.agenti.map(n=>`<button type="button" data-me="${esc(n)}" aria-pressed="${S.me===n}">${esc(n)}</button>`).join("")}<button type="button" data-me="" aria-pressed="${!S.me}">Nessuno, mostra tutti</button></div>`);
+  }
+  else if(SH.type==="more"){
+    html=shell("Altro",`
+      <div class="card"><div class="grow"><span>Acquisizioni in archivio</span><b style="font-variant-numeric:tabular-nums">${S.acq.length}</b></div><div class="grow" style="margin-top:6px"><span>Civici censiti</span><b style="font-variant-numeric:tabular-nums">${S.stabili.length}</b></div></div>
+      <fieldset class="card"><legend>Esporta</legend><p class="hint">File CSV che si apre in Excel o si importa in Google Fogli.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn sec" type="button" data-exp="acq">Acquisizioni (.csv)</button><button class="btn sec" type="button" data-exp="stab">Stabili (.csv)</button></div></fieldset>
+      <fieldset class="card"><legend>Modalità prova</legend>
+      <p class="hint">Per imparare a usare l'app o fare prove senza sporcare l'archivio vero. Vale solo su questo telefono.</p>
+      <label class="check" for="m-test"><input id="m-test" type="checkbox" ${S.test?"checked":""}><span>Modalità prova attiva<small>${S.test?`Archivio di prova: ${S.acq.length} acquisizioni, ${S.stabili.length} civici`:"Ora stai usando l'archivio vero"}</small></span></label>
+      ${S.test?`<div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn sec" type="button" data-seed>Carica dati di esempio</button><span id="clrZone"><button class="btn danger" type="button" data-askclr>Svuota archivio di prova</button></span></div>`:""}
+      </fieldset>
+      <fieldset class="card"><legend>Account</legend><p class="hint">Hai fatto l'accesso come <b>${esc(window.__userEmail?window.__userEmail():"")}</b>.</p>
+      <button class="btn sec" type="button" data-logout>Esci dall'account</button></fieldset>
+      <fieldset class="card"><legend>Agenti</legend><p class="hint">Un nome per riga.</p>
+      <div class="f"><textarea id="m-agenti" style="min-height:120px" aria-label="Elenco agenti">${esc(S.agenti.join("\n"))}</textarea></div>
+      <button class="btn pri" type="button" data-saveagenti>Salva elenco agenti</button></fieldset>`);
+  }
+  r.innerHTML=html;
+  if(keepNota&&$("#h-nota"))$("#h-nota").value=keepNota;
+  if(soft&&scroll&&$(".sheet-b",r))$(".sheet-b",r).scrollTop=scroll;
+}
+
+/* collect form */
+function segVal(name){const b=document.querySelector(`[data-seg="${name}"] [aria-pressed="true"]`);return b?b.dataset.v:""}
+function val(id){const e=document.getElementById(id);return e?norm(e.value):""}
+function needsRich(es){return es==="1"||es==="3"}
+function collectStab(){
+  const s=SH.draft;
+  Object.assign(s,{agente:val("s-agente"),macrozona:val("s-macro"),via:cap(val("s-via")),civico:civN(val("s-civico")),
+    tipoStabile:segVal("tipoStabile"),commerciali:segVal("commerciali"),garage:segVal("garage"),amministratore:val("s-amm"),ammTel:val("s-ammtel"),note:val("s-note")});
+  document.querySelectorAll("[data-mki]").forEach(i=>{const m=s.mercato[+i.dataset.mki];if(m)m[i.dataset.mkf]=norm(i.value)});
+  return s;
+}
+
+function collectAcq(){
+  const a=SH.draft;
+  Object.assign(a,{ignoto:!!(document.getElementById("f-ignoto")||{}).checked,agente:val("f-agente"),nome:val("f-nome"),telefono:val("f-tel"),tipo:segVal("tipo"),uso:segVal("uso"),gestito:segVal("gestito"),agenziaNome:val("f-agenzia"),agenziaTel:val("f-agtel"),
+    macrozona:val("f-macro"),via:val("f-via"),civico:val("f-civico"),descrizione:(document.getElementById("f-desc")||{}).value||"",
+    note:(document.getElementById("f-note")||{}).value||"",esito:segVal("esito")||a.esito,richiama:val("f-richiama")});
+  return a;
+}
+async function saveAcq(){
+  if(SH.uploading){toast("Aspetta che finisca il caricamento delle foto");return}
+  const es=segVal("esito")||"1";
+  const body={agente:val("f-agente"),nome:cap(val("f-nome")),telefono:val("f-tel"),tipo:segVal("tipo"),uso:segVal("uso"),
+    gestito:segVal("gestito"),agenziaNome:segVal("gestito")==="Altra agenzia"?cap(val("f-agenzia")):"",agenziaTel:segVal("gestito")==="Altra agenzia"?val("f-agtel"):"",
+    macrozona:val("f-macro"),via:cap(val("f-via")),civico:civN(val("f-civico")),
+    descrizione:val("f-desc"),note:val("f-note"),esito:es,richiama:needsRich(es)?val("f-richiama"):"",foto:(SH.draft.foto||[]).slice(0,40)};
+  if(!body.agente){toast("Scegli l'agente");return}
+  body.ignoto=!!(document.getElementById("f-ignoto")||{}).checked;
+  if(body.ignoto){body.nome="";body.telefono="";
+    if(!body.via&&!body.descrizione){toast("Senza dati del cliente servono almeno la via o una descrizione");return}}
+  else if(!body.nome&&!body.telefono){toast("Inserisci nome o telefono, oppure spunta \"Non conosco nome e dati\"");return}
+  if(needsRich(es)&&!body.richiama){toast("Scegli quando richiamare");return}
+  if(!S.db){toast("Archivio non raggiungibile: dati non salvati");return}
+  const now=new Date().toISOString();
+  if(!SH.id){
+    body.creato=now; body.ultimaAzione=now; body.storico=[{data:now,agente:body.agente,esito:es,nota:"Acquisizione inserita"}];
+    if(await save(S.db.collection(C("acquisizioni")).doc(),body)){closeSheet();toast("Acquisizione salvata")}
+  } else {
+    if(await save(S.db.collection(C("acquisizioni")).doc(SH.id),body,true)){openSheet({type:"acqView",id:SH.id});toast("Modifiche salvate")}
+  }
+}
+async function addHist(){
+  const a=S.acq.find(x=>x.id===SH.id); if(!a)return;
+  const nota=val("h-nota"); const es=segVal("esito")||a.esito; const rich=needsRich(es)?val("f-richiama"):"";
+  if(!nota&&es===a.esito&&rich===(a.richiama||"")){toast("Scrivi cosa è successo o cambia l'esito");return}
+  if(needsRich(es)&&!rich){toast("Scegli quando richiamare");return}
+  const now=new Date().toISOString();
+  const storico=(a.storico||[]).concat([{data:now,agente:S.me||a.agente||"",esito:es,nota}]).slice(-200);
+  if(await save(S.db.collection(C("acquisizioni")).doc(a.id),{storico,esito:es,richiama:rich,ultimaAzione:now},true)){SH.newEsito=null;SH.newRich=null;drawSheet();toast("Attività registrata")}
+}
+async function saveStab(){
+  if(SH.uploading){toast("Aspetta che finisca il caricamento delle foto");return}
+  const s=collectStab();
+  if(!s.agente){toast("Scegli l'agente");return}
+  if(!s.macrozona||!s.via||!s.civico){toast("Servono macrozona, via e civico");return}
+  const mercato=(s.mercato||[]).filter(m=>m.contratto||m.gestore||m.piano||m.note||m.tel||m.agenzia||m.agTel).map(m=>({contratto:m.contratto||"",gestore:m.gestore||"",agenzia:m.gestore==="Agenzia"?(m.agenzia||""):"",agTel:m.gestore==="Agenzia"?(m.agTel||""):"",piano:m.piano||"",tel:m.tel||"",note:m.note||""}));
+  if(mercato.some(m=>!m.contratto)){toast("Indica vendita o affitto per ogni appartamento");return}
+  const b={agente:s.agente,macrozona:s.macrozona,via:s.via,civico:s.civico,tipoStabile:s.tipoStabile,commerciali:s.commerciali,garage:s.garage,mercato,foto:(s.foto||[]).slice(0,40),amministratore:s.amministratore,ammTel:s.ammTel,note:s.note,aggiornato:new Date().toISOString()};
+  const dup=S.stabili.find(x=>x.id!==SH.id&&sameCiv(x,b));
+  if(dup){toast("Questo civico ha già una scheda: la apro");openSheet({type:"stab",id:dup.id,draft:JSON.parse(JSON.stringify(dup))});return}
+  if(!S.db){toast("Archivio non raggiungibile: dati non salvati");return}
+  const ref=SH.id?S.db.collection(C("stabili")).doc(SH.id):S.db.collection(C("stabili")).doc();
+  if(await save(ref,b)){
+    S.path=[b.macrozona,key(b.via)]; S.tab="zone"; lsSet("riz-tab","zone");
+    closeSheet();render();toast("Scheda salvata");
+  }
+}
+async function doDelete(){
+  const col=C(SH.type==="stab"?"stabili":"acquisizioni");
+  if(!SH.id||!S.db)return;
+  try{await window.__wt(S.db.collection(col).doc(SH.id).delete());closeSheet();toast("Eliminato")}catch(e){toast("Eliminazione non riuscita")}
+}
+function csv(rows){return "﻿"+rows.map(r=>r.map(c=>{c=String(c==null?"":c);return /[";\n\r]/.test(c)?'"'+c.replace(/"/g,'""')+'"':c}).join(";")).join("\r\n")}
+async function exportCsv(which){
+  if(!S.dl){toast("Esportazione non disponibile in questa vista");return}
+  let rows,fn;
+  if(which==="acq"){
+    rows=[["Agente","Nome","Telefono","Contratto","Uso","Gestito da","Agenzia","Tel. agenzia","Macrozona","Via","Civico","Descrizione","Note","Esito","Richiama","Inserito","Ultima azione","Storico"]]
+      .concat(S.acq.map(a=>[a.agente,a.nome||(a.ignoto?"Cliente non noto":""),a.telefono,a.tipo,a.uso,a.gestito,a.agenziaNome,a.agenziaTel,macroOf(a),a.via,a.civico,a.descrizione,a.note,(ESITI[a.esito]||{}).t,fmtD(a.richiama),fmtD(a.creato),fmtD(a.ultimaAzione),(a.storico||[]).map(s=>`${fmtD(s.data)} ${s.agente||""}: ${s.nota||""}`).join(" | ")]));
+    fn=`acquisizioni-${todayISO()}.csv`;
+  } else {
+    rows=[["Agente","Macrozona","Via","Civico","Tipo stabile","Locali commerciali","Garage","In vendita","In affitto","Da privati","Da agenzie","Dettaglio appartamenti","Amministratore","Tel. amministratore","Note","Aggiornato"]]
+      .concat(S.stabili.map(s=>{const c=mkCounts(s);return [s.agente,macroOf(s),s.via,s.civico,s.tipoStabile,s.commerciali,s.garage,c.v,c.a,c.p,c.ag,
+        (s.mercato||[]).map(m=>[m.contratto,m.gestore==="Agenzia"?("agenzia "+(m.agenzia||"")+(m.agTel?" tel. "+m.agTel:"")).trim():m.gestore,m.piano,m.tel,m.note].filter(Boolean).join(", ")).join(" | "),s.amministratore,s.ammTel,s.note,fmtD(s.aggiornato)]}));
+    fn=`stabili-${todayISO()}.csv`;
+  }
+  try{await S.dl.save({filename:fn,data:csv(rows)})}catch(e){if(e&&e.code!=="declined")toast("Esportazione non riuscita")}
+}
+function curNames(){const T=tree();const nm=[];let n={kids:T};S.path.forEach(k=>{n=n&&n.kids.get(k);if(n)nm.push(n.name)});return nm}
+function openCiv(macro,via,civ){
+  const st=S.stabili.find(x=>sameCiv(x,{macrozona:macro,via,civico:civ}));
+  if(st)openSheet({type:"stab",id:st.id,draft:JSON.parse(JSON.stringify(st))});
+  else openSheet({type:"stab",id:null,draft:{macrozona:macro,via:cap(via),civico:civN(civ),agente:S.me,mercato:[]}});
+}
+
+/* ---------- events ---------- */
+document.addEventListener("click",e=>{
+  const t=e.target.closest("button,a"); if(!t)return;
+  const d=t.dataset;
+  if(d.logout!=null){window.__logout&&window.__logout();return}
+  if(d.testoff!=null){setTest(false);toast("Sei tornato all'archivio vero");return}
+  if(d.seed!=null){seedTest();return}
+  if(d.askclr!=null){$("#clrZone").innerHTML=`<span class="confirm"><span>Cancellare tutti i dati di prova?</span><button class="btn danger" type="button" data-doclr>Sì</button><button class="btn sec" type="button" data-noclr>No</button></span>`;return}
+  if(d.noclr!=null){refreshMore();return}
+  if(d.doclr!=null){clearTest();return}
+  if(d.lbclose!=null){lightbox(null);return}
+  if(d.lbgo!=null){lightbox(lightbox.list,+d.lbgo);return}
+  if(d.lb!=null&&SH){const list=SH.type==="acqView"?((S.acq.find(x=>x.id===SH.id)||{}).foto):(SH.draft&&SH.draft.foto);lightbox(list||[],+d.lb);return}
+  if(d.phdel!=null&&SH&&SH.draft){collectAny();SH.draft.foto.splice(+d.phdel,1);redrawForm();toast("Foto tolta: tocca Salva per confermare");return}
+  if(d.tab){S.tab=d.tab;lsSet("riz-tab",d.tab);render();window.scrollTo(0,0);return}
+  if(t.id==="whoBtn"){openSheet({type:"who"});return}
+  if(t.id==="moreBtn"){openSheet({type:"more"});return}
+  if(t.id==="fab"){
+    if(S.tab==="zone"){const nm=curNames();openSheet({type:"stab",id:null,draft:{macrozona:nm[0]||"",via:nm[1]||"",agente:S.me,mercato:[]}})}
+    else openSheet({type:"acqForm",id:null,draft:{esito:"1",richiama:todayISO(1),agente:S.me}});
+    return;
+  }
+  if(d.filtro){S.filtro=d.filtro;render();return}
+  if(d.zf){S.zf=d.zf;render();return}
+  if(d.openAcq!=null){openSheet({type:"acqView",id:d.openAcq});return}
+  if(d.crumb!=null){S.path=S.path.slice(0,+d.crumb);render();return}
+  if(d.go!=null){S.path=S.path.concat([d.go]);render();window.scrollTo(0,0);return}
+  if(d.civ!=null){const nm=curNames();openCiv(nm[0],nm[1],d.civ);return}
+  if(d.newciv!=null){const nm=curNames();openSheet({type:"stab",id:null,draft:{macrozona:nm[0],via:nm[1],agente:S.me,mercato:[]}});return}
+  if(d.close!=null){ if(SH&&SH.type==="acqForm"&&SH.id){openSheet({type:"acqView",id:SH.id})} else closeSheet(); return}
+  if(d.me!=null){S.me=d.me;lsSet("riz-me",d.me);if(S.filtro==="mie"&&!S.me)S.filtro="tutti";closeSheet();render();return}
+  if(d.saveacq!=null){saveAcq();return}
+  if(d.savestab!=null){saveStab();return}
+  if(d.addhist!=null){addHist();return}
+  if(d.editacq!=null){const a=S.acq.find(x=>x.id===SH.id);if(a)openSheet({type:"acqForm",id:a.id,draft:Object.assign({},a)});return}
+  if(d.gociv!=null){const a=S.acq.find(x=>x.id===SH.id);if(!a)return;S.path=[macroOf(a),key(a.via)];S.tab="zone";lsSet("riz-tab","zone");closeSheet();render();openCiv(macroOf(a),a.via,a.civico);return}
+  if(d.acqhere!=null){const s=collectStab();openSheet({type:"acqForm",id:null,draft:{macrozona:s.macrozona,via:s.via,civico:s.civico,esito:"1",richiama:todayISO(1),agente:s.agente||S.me}});return}
+  if(d.mkadd!=null){collectStab();SH.draft.mercato.push({contratto:"",gestore:""});drawSheet(true);const sb=$(".sheet-b");const last=document.querySelectorAll(".mk");if(last.length)last[last.length-1].scrollIntoView({block:"center"});return}
+  if(d.mkdel!=null){collectStab();SH.draft.mercato.splice(+d.mkdel,1);drawSheet(true);return}
+  if(d.askdel!=null){$("#delZone").innerHTML=`<div class="confirm"><span style="flex:1">Eliminare definitivamente?</span><button class="btn danger" type="button" data-dodel>Sì, elimina</button><button class="btn sec" type="button" data-nodel>Annulla</button></div>`;return}
+  if(d.nodel!=null){$("#delZone").innerHTML=`<button class="btn danger" type="button" data-askdel>Elimina</button>`;return}
+  if(d.dodel!=null){doDelete();return}
+  if(d.exp){exportCsv(d.exp);return}
+  if(d.saveagenti!=null){const n=[...new Set(($("#m-agenti").value||"").split("\n").map(cap).filter(Boolean))];if(!n.length){toast("Inserisci almeno un nome");return}
+    if(S.db)save(S.db.doc("impostazioni/agenti"),{nomi:n}).then(ok=>{if(ok){toast("Elenco agenti salvato");closeSheet()}});return}
+  // market row toggles
+  const mk=t.closest("[data-mk]");
+  if(mk&&t.dataset.v!=null&&SH&&SH.type==="stab"){
+    collectStab(); const m=SH.draft.mercato[+mk.dataset.mk]; if(!m)return; const f=mk.dataset.mkf;
+    m[f]=m[f]===t.dataset.v?"":t.dataset.v; drawSheet(true); return;
+  }
+  // seg toggles
+  const seg=t.closest("[data-seg]");
+  if(seg&&t.dataset.v!=null){
+    const name=seg.dataset.seg; const was=t.getAttribute("aria-pressed")==="true";
+    seg.querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed","false"));
+    if(!was||name==="esito")t.setAttribute("aria-pressed","true");
+    if(name==="gestito"){const w=$("#agWrap");if(w)w.hidden=!(t.getAttribute("aria-pressed")==="true"&&t.dataset.v==="Altra agenzia")}
+    if(name==="esito"){const w=$("#richWrap");if(w)w.hidden=!needsRich(t.dataset.v);if(SH&&SH.type==="acqView")SH.newEsito=t.dataset.v;
+      if(needsRich(t.dataset.v)&&!val("f-richiama")){const i=$("#f-richiama");if(i)i.value=todayISO(1)}}
+    if(name==="rich"){const i=$("#f-richiama");if(i)i.value=was?"":t.dataset.v;if(SH&&SH.type==="acqView")SH.newRich=i?i.value:""}
+  }
+});
+document.addEventListener("input",e=>{
+  if(e.target.id==="q"){S.q=e.target.value;clearTimeout(render.t);render.t=setTimeout(render,120)}
+  if(e.target.id==="f-richiama"){document.querySelectorAll('[data-seg="rich"] button').forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.v===e.target.value)));if(SH&&SH.type==="acqView")SH.newRich=e.target.value}
+});
+document.addEventListener("change",e=>{
+  if(e.target.id==="m-test"){setTest(e.target.checked);drawSheet(true);toast(e.target.checked?"Modalità prova attiva":"Sei tornato all'archivio vero");return}
+  if(e.target.id==="f-ignoto"){const w=$("#clienteDati");if(w)w.hidden=e.target.checked}
+  if(e.target.id==="ph-cam"||e.target.id==="ph-gal"){const fs=[...(e.target.files||[])].slice(0,20);e.target.value="";addPhotos(fs)}
+});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"){if($("#lbRoot").innerHTML)lightbox(null);else if(SH)closeSheet()}});
+
+document.documentElement.classList.toggle("is-test",S.test);
+window.__back=function(){
+  if($("#lbRoot").innerHTML){lightbox(null);return true}
+  if(SH){const c=document.querySelector("[data-close]");if(c)c.click();else closeSheet();return true}
+  if(S.tab==="zone"&&S.path.length){S.path=S.path.slice(0,-1);render();return true}
+  if(S.tab!=="oggi"){S.tab="oggi";lsSet("riz-tab","oggi");render();return true}
+  return false;
+};
+boot();
+})();
+</script>
+
+</body>
+</html>
