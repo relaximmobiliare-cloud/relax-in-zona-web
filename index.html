@@ -232,6 +232,14 @@ legend .count{font-family:var(--f-body);font-weight:400;margin-left:6px}
 .sugg button{border:0;border-bottom:1px solid var(--line);background:transparent;text-align:left;padding:10px 12px;display:flex;flex-direction:column;gap:1px}
 .sugg button:last-child{border-bottom:0}
 .sugg small{color:var(--muted);font-size:.8rem}
+.tab{position:relative}
+.tbadge{position:absolute;top:6px;left:calc(50% + 4px);min-width:20px;height:20px;padding:0 6px;border-radius:999px;background:var(--warn);color:#fff;font-size:.72rem;font-weight:700;display:grid;place-items:center;line-height:1}
+.dup{display:flex;flex-direction:column;gap:8px;background:var(--e1-bg);color:var(--fg);border:1.5px solid var(--e1);border-radius:10px;padding:10px 12px}
+.dup b{color:var(--e1)}
+.dup small{color:var(--muted);font-size:.82rem;display:block}
+.dup-r{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.dup-r span{min-width:0;font-weight:700}
+.dup-r .btn{min-height:40px;padding:8px 12px}
 </style>
 
 <header class="top"><div class="top-in gut">
@@ -346,6 +354,8 @@ function normS(d){
 }
 function lastAct(a){return a.ultimaAzione||a.creato||""}
 function idleDays(a){const l=lastAct(a);return l?days(String(l).slice(0,10),todayISO()):0}
+function normPh(p){let d=String(p||"").replace(/\D/g,"");d=d.replace(/^(0039|39)(\d{9,10})$/,"$2");return d}
+function dueList(){const t=todayISO();const mine=a=>!S.me||!a.agente||a.agente===S.me;return S.acq.filter(a=>attiva(a)&&mine(a)&&needsRich(a.esito)&&a.richiama&&a.richiama<=t)}
 const isIdle = a => attiva(a)&&esNum(a.esito)!==4&&idleDays(a)>IDLE_DAYS;
 
 /* ---------- archivio ---------- */
@@ -357,7 +367,7 @@ function subscribe(){
   S.acq=[];S.stabili=[];S.loaded={a:false,s:false};
   const db=S.db; if(!db)return;
   UNSUB.push(db.collection(C("acquisizioni")).limit(3000).onSnapshot(snap=>{
-    S.acq=snap.docs.map(d=>normA(Object.assign({},d.data(),{id:d.id}))); S.loaded.a=true; render(); refreshSheet();
+    const first=!S.loaded.a; S.acq=snap.docs.map(d=>normA(Object.assign({},d.data(),{id:d.id}))); S.loaded.a=true; render(); refreshSheet(); if(first)maybeAvviso();
   },()=>{S.offline=true;render()}));
   UNSUB.push(db.collection(C("stabili")).limit(3000).onSnapshot(snap=>{
     S.stabili=snap.docs.map(d=>normS(Object.assign({},d.data(),{id:d.id}))); S.loaded.s=true; render(); refreshMore();
@@ -366,6 +376,11 @@ function subscribe(){
 function setTest(on){
   S.test=on; lsSet("riz-test",on?"1":""); document.documentElement.classList.toggle("is-test",on);
   S.path=[]; S.filtro="tutti"; S.zf="tutti"; S.q=""; S.zq=""; subscribe(); render();
+}
+function maybeAvviso(){
+  const n=dueList().length, k=todayISO()+(S.test?"p":"")+(S.me||"");
+  if(!n||SH||lsGet("riz-avviso")===k)return;
+  lsSet("riz-avviso",k); openSheet({type:"avviso"});
 }
 function refreshMore(){if(SH&&SH.type==="more")drawSheet(true)}
 function applyListe(d){
@@ -445,6 +460,8 @@ function render(){
   document.querySelectorAll(".tab").forEach(b=>b.setAttribute("aria-current",b.dataset.tab===S.tab?"page":"false"));
   $("#whoBtn").textContent = S.me?S.me:"Chi sei?";
   $("#fabTxt").textContent = S.tab==="zone"?"Nuovo civico":"Nuova acquisizione";
+  const tb=document.querySelector('.tab[data-tab="oggi"]'); if(tb){let bd=tb.querySelector(".tbadge");if(!bd){bd=document.createElement("span");bd.className="tbadge";tb.appendChild(bd)}
+    const n=S.loaded.a?dueList().length:0; bd.textContent=n>99?"99+":String(n); bd.hidden=!n; tb.setAttribute("aria-label","Oggi"+(n?`, ${n} da richiamare`:""))}
   const m=$("#main"); const ae=document.activeElement; const keep = ae&&(ae.id==="q"||ae.id==="zq")?ae.id:"";
   let h = S.offline?`<div class="banner">Non riesco a leggere l'archivio. Controlla la connessione e di aver fatto l'accesso, poi riapri l'app.</div>`:"";
   if(S.test) h+=`<div class="banner testb"><span>Modalità prova: stai usando un archivio separato, i dati veri non vengono toccati.</span><button type="button" class="btn sec" data-testoff>Esci</button></div>`;
@@ -469,7 +486,7 @@ function viewOggi(){
   const t=todayISO();
   const mine=a=>!S.me||!a.agente||a.agente===S.me;
   const live=S.acq.filter(a=>attiva(a)&&mine(a));
-  const due=live.filter(a=>needsRich(a.esito)&&a.richiama&&a.richiama<=t).sort((x,y)=>x.richiama.localeCompare(y.richiama));
+  const due=dueList().sort((x,y)=>x.richiama.localeCompare(y.richiama));
   const send=live.filter(a=>esNum(a.esito)===2);
   const idle=live.filter(isIdle).sort((x,y)=>idleDays(y)-idleDays(x));
   const label=new Date().toLocaleDateString("it-IT",{weekday:"long",day:"numeric",month:"long"});
@@ -718,7 +735,8 @@ function drawSheet(soft){
       <div id="clienteDati" class="f" style="gap:12px" ${a.ignoto?"hidden":""}>
       <div class="f"><label for="f-nome">Nome e cognome</label><input id="f-nome" value="${esc(a.nome||"")}" autocomplete="off"></div>
       <div class="two"><div class="f"><label for="f-tel">Telefono</label><input id="f-tel" type="tel" inputmode="tel" value="${esc(a.telefono||"")}" autocomplete="off"></div>
-      <div class="f"><label for="f-email">Email</label><input id="f-email" type="email" inputmode="email" value="${esc(a.email||"")}" autocomplete="off"></div></div></div>
+      <div class="f"><label for="f-email">Email</label><input id="f-email" type="email" inputmode="email" value="${esc(a.email||"")}" autocomplete="off"></div></div>
+      <div id="dupWrap"></div></div>
       <div class="f"><label for="f-tipoc">Tipo contatto</label>${selectOf("f-tipoc",S.L.tipiContatto,a.tipoContatto)}</div>
       <div class="f"><span class="lab">Immobile gestito da</span>${segBtns("gestito",["Privato","Altra agenzia"],a.gestito)}</div>
       <div class="two" id="agWrap" ${a.gestito==="Altra agenzia"?"":"hidden"}><div class="f"><label for="f-agenzia">Quale agenzia</label><input id="f-agenzia" value="${esc(a.agenziaNome||"")}" autocomplete="off" placeholder="Nome dell'agenzia"></div>
@@ -803,6 +821,12 @@ function drawSheet(soft){
     ${!isNew?`<div id="delZone"><button class="btn danger" type="button" data-askdel>Elimina scheda</button></div>`:""}`,
     `<button class="btn pri" type="button" data-savestab>${isNew?"Salva civico":"Salva scheda"}</button>`);
   }
+  else if(SH.type==="avviso"){
+    const due=dueList().sort((x,y)=>x.richiama.localeCompare(y.richiama));
+    html=shell("Da richiamare oggi",`<div class="banner" style="background:var(--e1-bg);color:var(--e1)">${S.me?esc(S.me)+", hai":"In agenzia ci sono"} ${due.length} client${due.length===1?"e":"i"} da richiamare oggi o in ritardo.</div>
+      ${due.length?`<div class="list">${due.map(rowAcq).join("")}</div>`:""}`,
+      `<button class="btn pri" type="button" data-close>Ho capito</button>`);
+  }
   else if(SH.type==="who"){
     html=shell("Chi sei?",`<p class="hint">Il nome resta su questo telefono e compila da solo il campo Agente.</p>
       <div class="seg esiti">${S.L.agenti.map(n=>`<button type="button" data-me="${esc(n)}" aria-pressed="${S.me===n}">${esc(n)}</button>`).join("")}<button type="button" data-me="" aria-pressed="${!S.me}">Nessuno, mostra tutti</button></div>`);
@@ -824,11 +848,20 @@ function drawSheet(soft){
       <button class="btn sec" type="button" data-logout>Esci dall'account</button></fieldset>`);
   }
   r.innerHTML=html;
+  if(SH.type==="acqForm")checkDup();
   keep.forEach(([id,v])=>{if(v!=null&&$("#"+id))$("#"+id).value=v});
   if(soft&&scroll&&$(".sheet-b",r))$(".sheet-b",r).scrollTop=scroll;
 }
 
 /* ---------- lettura e salvataggio ---------- */
+function checkDup(){
+  const w=document.getElementById("dupWrap"); if(!w||!SH)return;
+  const ph=normPh(val("f-tel")), nm=key(val("f-nome"));
+  const hit=S.acq.filter(a=>a.id!==SH.id&&((ph.length>=6&&normPh(a.telefono)===ph)||(nm.length>=5&&key(a.nome)===nm))).slice(0,3);
+  w.innerHTML=hit.length?`<div class="dup"><b>Attenzione: ${hit.length===1?"questo cliente sembra già presente":"ci sono già clienti simili"}</b>
+    ${hit.map(a=>`<div class="dup-r"><span>${esc(a.nome||"Senza nome")} · ${esc(norm(a.telefono)||"senza telefono")}<small>${esc([a.agente?"inserito da "+a.agente:"",fmtD(a.creato),esShort(a.esito)].filter(Boolean).join(" · "))}</small></span><button type="button" class="btn sec" data-dupopen="${esc(a.id)}">Apri la scheda</button></div>`).join("")}
+    <small>Se è lo stesso cliente, apri la sua scheda e registra lì l'attività. Se è un'altra persona, continua pure.</small></div>`:"";
+}
 function segVal(name){const b=document.querySelector(`[data-seg="${name}"] [aria-pressed="true"]`);return b?b.dataset.v:""}
 function val(id){const e=document.getElementById(id);return e?norm(e.value):""}
 function txt(id){const e=document.getElementById(id);return e?String(e.value||"").trim():""}
@@ -963,6 +996,7 @@ document.addEventListener("click",e=>{
   if(d.zf){S.zf=d.zf;render();return}
   if(d.allzones!=null){S.allZones=true;render();return}
   if(d.openAcq!=null){openSheet({type:"acqView",id:d.openAcq});return}
+  if(d.dupopen!=null){openSheet({type:"acqView",id:d.dupopen});toast("Nuovo inserimento annullato: registra qui l'attività");return}
   if(d.crumb!=null){S.path=S.path.slice(0,+d.crumb);S.allZones=false;render();return}
   if(d.go!=null){S.path=S.path.concat([d.go]);render();window.scrollTo(0,0);return}
   if(d.govia){const p=JSON.parse(d.govia);S.path=p.map(key);S.zq="";render();window.scrollTo(0,0);return}
@@ -1005,6 +1039,7 @@ document.addEventListener("input",e=>{
   if(id==="q"){S.q=e.target.value;clearTimeout(render.t);render.t=setTimeout(render,120)}
   if(id==="zq"){S.zq=e.target.value;clearTimeout(render.t);render.t=setTimeout(render,120)}
   if(e.target.dataset&&e.target.dataset.viaq){drawSugg(e.target.dataset.viaq)}
+  if(id==="f-tel"||id==="f-nome"){clearTimeout(checkDup.t);checkDup.t=setTimeout(checkDup,250)}
   if(id==="f-richiama"){document.querySelectorAll('[data-seg="rich"] button').forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.v===e.target.value)));if(SH&&SH.type==="acqView")SH.newRich=e.target.value}
   if(id==="f-invia"&&SH&&SH.type==="acqView")SH.newInv=e.target.value;
 });
