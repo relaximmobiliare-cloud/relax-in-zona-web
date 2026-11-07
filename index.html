@@ -227,6 +227,11 @@ legend .count{font-family:var(--f-body);font-weight:400;margin-left:6px}
 .auth-err{min-height:1.2em;margin:4px 0 0;color:var(--warn);font-weight:700;font-size:.9rem}
 .auth-link{border:0;background:transparent;color:var(--brand);font-weight:700;padding:10px}
 .auth-note{color:var(--muted);font-size:.9rem;margin:0}
+.sugg{display:flex;flex-direction:column;position:absolute;left:0;right:0;top:100%;z-index:5;background:var(--surface);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);overflow:hidden}
+.sugg:empty{display:none}
+.sugg button{border:0;border-bottom:1px solid var(--line);background:transparent;text-align:left;padding:10px 12px;display:flex;flex-direction:column;gap:1px}
+.sugg button:last-child{border-bottom:0}
+.sugg small{color:var(--muted);font-size:.8rem}
 </style>
 
 <header class="top"><div class="top-in gut">
@@ -252,50 +257,98 @@ legend .count{font-family:var(--f-body);font-weight:400;margin-left:6px}
 <script>
 (function(){
 "use strict";
-const DEFAULT_AGENTI = ["Pasquale","Marco","Antonio","Emanuela"];
-const MACRO = ["PN1","PN2","PN3","PN4","CENTRO","FRANCAVILLA","MONTESILVANO","FUORIZONA"];
-const TIPI_STAB = ["Casa singola","Piccola palazzina","Media palazzina","Grande palazzina"];
-const TIPO_SHORT = {"Casa singola":"Casa singola","Piccola palazzina":"Pal. piccola","Media palazzina":"Pal. media","Grande palazzina":"Pal. grande"};
-const ESITI = {
-  "1":{t:"Da richiamare",d:"Il cliente vuole essere ricontattato",c:"p1"},
-  "2":{t:"Da inviare",d:"Mandare mail, WhatsApp o documento",c:"p2"},
-  "3":{t:"Ci richiama lui",d:"Se non si fa sentire, lo riprendiamo noi",c:"p3"},
-  "0":{t:"Chiuso",d:"Nessuna azione in sospeso",c:"pok"}
+/* Menu di base: gli stessi del foglio Liste del gestionale. Se il gestionale è collegato,
+   l'app li riceve da impostazioni/liste e usa quelli. */
+const BASE = {
+  origini:["Sito (form acquisizione)","Di persona (sul territorio)","Telefono","Passaparola","Altro"],
+  agenti:["Pasquale","Marco","Antonio","Emanuela"],
+  esiti:["1 - Da ricontattare","2 - Da inviare materiale","3 - Ricontatta il cliente","4 - Ricontattato"],
+  pratiche:["Aperta","In pausa","Chiusa"],
+  tipiAzione:["Chiamata","Appuntamento","Email","WhatsApp","Invio documento","Sopralluogo","Altro"],
+  citta:["Pescara","Montesilvano","Spoltore","San Giovanni Teatino","Francavilla al Mare","Chieti"],
+  zone:["PN1","PN2","PN3","PN4","Pineta/ S.Silvestro s.","Tirino","Centro","Pescara Nord","Tiburtina","S.Silvestro Colle","Franc. Nord-Asterope","Franc. Asterope-Sud","Montesilvano","Spoltore","S.Teresa"],
+  tipiStabile:["Casa singola","Villa a schiera","Piccola palazzina","Media palazzina","Grande palazzina / Condominio","Altro"],
+  commerciali:["Sì","No"],
+  garage:["Sì, a livello","Sì, interrato","No"],
+  tipiContatto:["Vendita residenziale","Vendita commerciale","Affitto residenziale","Affitto commerciale","Altro"]
 };
-const TIPI = ["Vendita","Affitto"];
-const USI = ["Residenziale","Commerciale"];
+const ESITO_INFO = {
+  1:{c:"p1",d:"Il cliente vuole essere ricontattato: serve la data"},
+  2:{c:"p2",d:"Mandare mail, WhatsApp o documento"},
+  3:{c:"p3",d:"Ci richiama lui: metti una data per riprenderlo se non si fa sentire"},
+  4:{c:"pok",d:"Contatto fatto, nessuna azione in sospeso"}
+};
+const TIPO_SHORT = {"Casa singola":"Casa singola","Villa a schiera":"Villa a schiera","Piccola palazzina":"Pal. piccola","Media palazzina":"Pal. media","Grande palazzina / Condominio":"Pal. grande","Altro":"Altro"};
 const IDLE_DAYS = 60;
 
-const S = { tab:"oggi", acq:[], stabili:[], agenti:DEFAULT_AGENTI.slice(), me:"", q:"", filtro:"tutti", zf:"tutti", path:[], db:null, dl:null, offline:false, loaded:{a:false,s:false} };
+const S = { tab:"oggi", acq:[], stabili:[], L:JSON.parse(JSON.stringify(BASE)), listeDalGestionale:false, me:"", q:"", zq:"", filtro:"tutti", zf:"tutti", path:[], allZones:false, db:null, dl:null, offline:false, loaded:{a:false,s:false} };
 
 /* ---------- utils ---------- */
 const $ = (s,r=document)=>r.querySelector(s);
 const esc = s => String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const norm = s => String(s||"").trim().replace(/\s+/g," ");
+const norm = s => String(s==null?"":s).trim().replace(/\s+/g," ");
 const key = s => norm(s).toLowerCase();
-const cap = s => norm(s).replace(/(^|[\s'’-])(\p{L})/gu,(m,a,b)=>a+b.toUpperCase());
+const cap = s => norm(s).replace(/(^|[\s'’.-])(\p{L})/gu,(m,a,b)=>a+b.toUpperCase());
 const civN = s => norm(s).toUpperCase();
-const macroOf = x => MACRO.includes(x.macrozona)?x.macrozona:(x.macrozona?"FUORIZONA":"");
-function todayISO(off=0){const d=new Date();d.setHours(12,0,0,0);d.setDate(d.getDate()+off);return d.toISOString().slice(0,10)}
+const rid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+function todayISO(off=0){const d=new Date();d.setHours(12,0,0,0);d.setDate(d.getDate()+off);const p=n=>String(n).padStart(2,"0");return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`}
 function days(a,b){return Math.round((new Date(b+"T12:00:00")-new Date(a+"T12:00:00"))/864e5)}
-function fmtD(iso){if(!iso)return"";const [y,m,d]=iso.slice(0,10).split("-");return `${d}/${m}/${y.slice(2)}`}
+function fmtD(iso){if(!iso)return"";const [y,m,d]=String(iso).slice(0,10).split("-");return d?`${d}/${m}/${y.slice(2)}`:""}
 function whenLabel(iso){
   if(!iso)return null; const n=days(todayISO(),iso);
   if(n<0)return{t:n===-1?"Scaduto ieri":`Scaduto da ${-n} gg`,c:"late"};
   if(n===0)return{t:"Oggi",c:"today"}; if(n===1)return{t:"Domani",c:"soon"};
   if(n<=14)return{t:`Tra ${n} giorni`,c:"soon"}; return{t:fmtD(iso),c:"soon"};
 }
-function idleDays(a){const last=a.ultimaAzione||a.creato; return last?days(last.slice(0,10),todayISO()):0}
 function lsGet(k){try{return localStorage.getItem(k)||""}catch(e){return""}}
 function lsSet(k,v){try{localStorage.setItem(k,v)}catch(e){}}
-function toast(msg){const r=$("#toastRoot");r.innerHTML=`<div class="toast" role="status">${esc(msg)}</div>`;clearTimeout(toast.t);toast.t=setTimeout(()=>r.innerHTML="",2600)}
-function addrOf(x){return [x.via?(cap(x.via)+(x.civico?" "+civN(x.civico):"")):"",macroOf(x)].filter(Boolean).join(" · ")}
+function toast(msg){const r=$("#toastRoot");r.innerHTML=`<div class="toast" role="status">${esc(msg)}</div>`;clearTimeout(toast.t);toast.t=setTimeout(()=>r.innerHTML="",2800)}
 function digits(p){return String(p||"").replace(/[^\d+]/g,"")}
 function waNum(p){let d=digits(p).replace(/^\+/,"");if(d.length===10&&d[0]==="3")d="39"+d;return d}
-function sameCiv(a,b){return macroOf(a)===macroOf(b)&&key(a.via)===key(b.via)&&civN(a.civico)===civN(b.civico)}
-function mkCounts(s){const m=s.mercato||[];return{v:m.filter(x=>x.contratto==="Vendita").length,a:m.filter(x=>x.contratto==="Affitto").length,p:m.filter(x=>x.gestore==="Privato").length,ag:m.filter(x=>x.gestore==="Agenzia").length}}
+function phoneLinks(tel,big){tel=norm(tel);if(!tel)return"";return `<div class="phone"><span class="num"${big?"":` style="font-size:1.05rem"`}>${esc(tel)}</span><a href="tel:${esc(digits(tel))}">Chiama</a><a href="https://wa.me/${esc(waNum(tel))}" target="_blank" rel="noopener">WhatsApp</a></div>`}
 
-/* ---------- data ---------- */
+/* esiti: testo completo come nel gestionale ("1 - Da ricontattare"), numero per i colori */
+function esNum(e){const m=String(e||"").match(/^\s*([0-4])/);if(!m)return 0;return m[1]==="0"?4:+m[1]}
+function esText(n){return S.L.esiti[n-1]||BASE.esiti[n-1]}
+function esShort(e){const n=esNum(e);const t=e&&isNaN(+e)?String(e):esText(n)||"";return t.replace(/^\s*\d\s*-\s*/,"")||"Senza esito"}
+const needsRich = e => {const n=esNum(e);return n===1||n===3};
+const attiva = a => !a.pratica || a.pratica==="Aperta";
+
+/* chiave dello stabile, identica alla colonna A di Stabili: CITTÀ-ZONA-VIA-CIVICO */
+function chiave(x){const c=norm(x.citta),z=norm(x.zona),v=norm(x.via),n=norm(x.civico);return c&&z&&v&&n?`${c}-${z}-${v}-${n}`.toUpperCase():""}
+const sameCiv=(a,b)=>{const k=chiave(a);return !!k&&k===chiave(b)};
+function addrOf(x){return [x.via?(cap(x.via)+(x.civico?" "+civN(x.civico):"")):"",x.zona,x.citta&&x.citta!=="Pescara"?x.citta:""].filter(Boolean).join(" · ")}
+function mkCounts(s){const m=s.mercato||[];return{v:m.filter(x=>x.contratto==="Vendita").length,a:m.filter(x=>x.contratto==="Affitto").length,p:m.filter(x=>x.gestore==="Privato").length,ag:m.filter(x=>x.gestore==="Agenzia"||x.gestore==="Società").length}}
+const hasGarage = s => /^s[iì]/i.test(s.garage||"");
+
+/* valori scritti dalle versioni precedenti dell'app: letti come quelli nuovi */
+function zonaDaMacro(m){const t=norm(m).toUpperCase();const z=S.L.zone.find(x=>x.toUpperCase()===t);if(z)return z;if(t==="FRANCAVILLA")return"Franc. Nord-Asterope";if(t==="FUORIZONA")return"";if(t==="CENTRO")return"Centro";return norm(m)}
+function cittaDaZona(z){const t=key(z);if(!t)return"";if(t==="montesilvano")return"Montesilvano";if(t==="spoltore")return"Spoltore";if(t.indexOf("franc")===0)return"Francavilla al Mare";return"Pescara"}
+function normA(d){
+  const x=Object.assign({},d);
+  if(/^[0-3]$/.test(String(x.esito||""))){const n=String(x.esito);if(n==="0"){x.esito=esText(4);if(!x.pratica)x.pratica="Chiusa"}else x.esito=esText(+n)}
+  if(!x.tipoContatto&&(x.tipo||x.uso)){const t=(x.tipo||"Vendita")+" "+(x.uso||"Residenziale").toLowerCase();x.tipoContatto=S.L.tipiContatto.includes(t)?t:"Altro"}
+  if(!x.zona&&x.macrozona)x.zona=zonaDaMacro(x.macrozona);
+  if(!x.citta&&x.zona)x.citta=cittaDaZona(x.zona);
+  if(!x.pratica)x.pratica="Aperta";
+  x.storico=(x.storico||[]).map(s=>/^[0-3]$/.test(String(s.esito||""))?Object.assign({},s,{esito:s.esito==="0"?esText(4):esText(+s.esito)}):s);
+  return x;
+}
+function normS(d){
+  const x=Object.assign({},d);
+  if(!x.zona&&x.macrozona)x.zona=zonaDaMacro(x.macrozona);
+  if(!x.citta&&x.zona)x.citta=cittaDaZona(x.zona);
+  if(x.tipoStabile==="Grande palazzina"||x.tipoStabile==="Condominio")x.tipoStabile="Grande palazzina / Condominio";
+  if(x.tipoStabile==="Palazzina")x.tipoStabile="Media palazzina";
+  if(x.garage==="Sì")x.garage="Sì, a livello";
+  x.mercato=(x.mercato||[]).map(m=>({mid:m.mid||rid(),contratto:m.contratto||"",tipoImm:m.tipoImm||"Appartamento",gestore:m.gestore||"",agenzia:m.agenzia||"",tel:m.agTel||m.tel||"",piano:m.piano||"",note:m.note||""}));
+  return x;
+}
+function lastAct(a){return a.ultimaAzione||a.creato||""}
+function idleDays(a){const l=lastAct(a);return l?days(String(l).slice(0,10),todayISO()):0}
+const isIdle = a => attiva(a)&&esNum(a.esito)!==4&&idleDays(a)>IDLE_DAYS;
+
+/* ---------- archivio ---------- */
 S.test = lsGet("riz-test")==="1";
 const C = name => S.test ? "prova_"+name : name;
 let UNSUB=[];
@@ -303,42 +356,52 @@ function subscribe(){
   UNSUB.forEach(u=>{try{u()}catch(e){}}); UNSUB=[];
   S.acq=[];S.stabili=[];S.loaded={a:false,s:false};
   const db=S.db; if(!db)return;
-  UNSUB.push(db.collection(C("acquisizioni")).limit(1000).onSnapshot(snap=>{
-    S.acq=snap.docs.map(d=>Object.assign({id:d.id},d.data())); S.loaded.a=true; render(); refreshSheet();
+  UNSUB.push(db.collection(C("acquisizioni")).limit(3000).onSnapshot(snap=>{
+    S.acq=snap.docs.map(d=>normA(Object.assign({},d.data(),{id:d.id}))); S.loaded.a=true; render(); refreshSheet();
   },()=>{S.offline=true;render()}));
-  UNSUB.push(db.collection(C("stabili")).limit(1000).onSnapshot(snap=>{
-    S.stabili=snap.docs.map(d=>Object.assign({id:d.id},d.data())); S.loaded.s=true; render(); refreshMore();
+  UNSUB.push(db.collection(C("stabili")).limit(3000).onSnapshot(snap=>{
+    S.stabili=snap.docs.map(d=>normS(Object.assign({},d.data(),{id:d.id}))); S.loaded.s=true; render(); refreshMore();
   },()=>{S.offline=true;render()}));
 }
 function setTest(on){
   S.test=on; lsSet("riz-test",on?"1":""); document.documentElement.classList.toggle("is-test",on);
-  S.path=[]; S.filtro="tutti"; S.zf="tutti"; S.q=""; subscribe(); render();
+  S.path=[]; S.filtro="tutti"; S.zf="tutti"; S.q=""; S.zq=""; subscribe(); render();
 }
 function refreshMore(){if(SH&&SH.type==="more")drawSheet(true)}
+function applyListe(d){
+  const L=JSON.parse(JSON.stringify(BASE));
+  if(d) Object.keys(BASE).forEach(k=>{if(Array.isArray(d[k])&&d[k].filter(Boolean).length)L[k]=d[k].map(norm).filter(Boolean)});
+  S.L=L; S.listeDalGestionale=!!d;
+  try{lsSet("riz-liste",d?JSON.stringify(d):"")}catch(e){}
+  S.acq=S.acq.map(normA); S.stabili=S.stabili.map(normS);
+  render();
+}
 async function seedTest(){
   if(!S.test||!S.db)return;
-  const ag=S.agenti, now=new Date();
+  const ag=S.L.agenti, now=new Date(), L=S.L;
   const iso=o=>{const d=new Date(now);d.setDate(d.getDate()+o);return d.toISOString()};
-  const day=o=>iso(o).slice(0,10);
+  const day=o=>todayISO(o);
+  const z=i=>L.zone[i]||L.zone[0];
   const stab=[
-    {macrozona:"PN1",via:"Via Tiburtina Valeria",civico:"12",tipoStabile:"Media palazzina",commerciali:"Sì",garage:"Sì",amministratore:"Studio Esempio",ammTel:"085 000 0001",
-      mercato:[{contratto:"Vendita",gestore:"Privato",agenzia:"",piano:"2° piano",tel:"333 000 0001",note:"Cartello sul balcone (esempio)"},{contratto:"Affitto",gestore:"Agenzia",agenzia:"Agenzia Esempio",piano:"Piano terra",tel:"",note:"Negozio"}],note:"Scheda di esempio"},
-    {macrozona:"PN1",via:"Via Tiburtina Valeria",civico:"14",tipoStabile:"Piccola palazzina",commerciali:"No",garage:"Sì",mercato:[],note:"Scheda di esempio"},
-    {macrozona:"CENTRO",via:"Corso Umberto I",civico:"45",tipoStabile:"Grande palazzina",commerciali:"Sì",garage:"No",
-      mercato:[{contratto:"Vendita",gestore:"Agenzia",agenzia:"Agenzia Esempio",piano:"4° piano",tel:"",note:""}],note:"Scheda di esempio"},
-    {macrozona:"MONTESILVANO",via:"Via Vestina",civico:"8",tipoStabile:"Casa singola",commerciali:"No",garage:"Sì",
-      mercato:[{contratto:"Vendita",gestore:"Privato",agenzia:"",piano:"",tel:"",note:"Villetta con giardino (esempio)"}],note:"Scheda di esempio"}
+    {citta:"Pescara",zona:z(0),via:"Via Tiburtina Valeria",civico:"12",tipoStabile:L.tipiStabile[3]||"Media palazzina",commerciali:"Sì",garage:L.garage[0],amministratore:"Studio Esempio",ammTel:"085 000 0001",
+      mercato:[{mid:rid(),contratto:"Vendita",tipoImm:"Appartamento",gestore:"Privato",agenzia:"",piano:"2° piano",tel:"333 000 0001",note:"Cartello sul balcone (esempio)"},{mid:rid(),contratto:"Affitto",tipoImm:"Locale",gestore:"Agenzia",agenzia:"Agenzia Esempio",piano:"Piano terra",tel:"",note:"Negozio"}],note:"Scheda di esempio"},
+    {citta:"Pescara",zona:z(0),via:"Via Tiburtina Valeria",civico:"14",tipoStabile:L.tipiStabile[2]||"Piccola palazzina",commerciali:"No",garage:L.garage[1]||L.garage[0],mercato:[],note:"Scheda di esempio"},
+    {citta:"Pescara",zona:z(6),via:"Corso Umberto I",civico:"45",tipoStabile:L.tipiStabile[4]||"Grande palazzina / Condominio",commerciali:"Sì",garage:"No",
+      mercato:[{mid:rid(),contratto:"Vendita",tipoImm:"Appartamento",gestore:"Società",agenzia:"Immobiliare Esempio srl",piano:"4° piano",tel:"",note:""}],note:"Scheda di esempio"},
+    {citta:"Montesilvano",zona:"Montesilvano",via:"Via Vestina",civico:"8",tipoStabile:L.tipiStabile[0],commerciali:"No",garage:L.garage[0],
+      mercato:[{mid:rid(),contratto:"Vendita",tipoImm:"Appartamento",gestore:"Privato",agenzia:"",piano:"",tel:"",note:"Villetta con giardino (esempio)"}],note:"Scheda di esempio"}
   ];
   const acq=[
-    {nome:"Mario Esempio",telefono:"333 000 0011",tipo:"Vendita",uso:"Residenziale",macrozona:"PN1",via:"Via Tiburtina Valeria",civico:"12",descrizione:"Trilocale 2° piano (esempio)",esito:"1",richiama:day(0)},
-    {nome:"Laura Prova",telefono:"333 000 0022",tipo:"Affitto",uso:"Residenziale",macrozona:"CENTRO",via:"Corso Umberto I",civico:"45",descrizione:"Bilocale arredato (esempio)",esito:"2",richiama:""},
-    {nome:"",ignoto:true,telefono:"",tipo:"Vendita",uso:"Residenziale",macrozona:"MONTESILVANO",via:"Via Vestina",civico:"8",descrizione:"Villetta con cartello senza nome (esempio)",esito:"1",richiama:day(-2)},
-    {nome:"Giorgio Test",telefono:"333 000 0033",tipo:"Vendita",uso:"Commerciale",macrozona:"PN1",via:"Via Tiburtina Valeria",civico:"12",descrizione:"Negozio piano terra (esempio)",esito:"3",richiama:day(5),vecchio:true}
+    {nome:"Mario Esempio",telefono:"333 000 0011",tipoContatto:L.tipiContatto[0],citta:"Pescara",zona:z(0),via:"Via Tiburtina Valeria",civico:"12",descrizione:"Trilocale 2° piano (esempio)",esito:esText(1),richiama:day(0)},
+    {nome:"Laura Prova",telefono:"333 000 0022",tipoContatto:L.tipiContatto[2]||L.tipiContatto[0],citta:"Pescara",zona:z(6),via:"Corso Umberto I",civico:"45",descrizione:"Bilocale arredato (esempio)",esito:esText(2),cosaInviare:"Valutazione via mail",richiama:""},
+    {nome:"",ignoto:true,telefono:"",tipoContatto:L.tipiContatto[0],citta:"Montesilvano",zona:"Montesilvano",via:"Via Vestina",civico:"8",descrizione:"Villetta con cartello senza nome (esempio)",esito:esText(1),richiama:day(-2)},
+    {nome:"Giorgio Test",telefono:"333 000 0033",tipoContatto:L.tipiContatto[1]||L.tipiContatto[0],citta:"Pescara",zona:z(0),via:"Via Tiburtina Valeria",civico:"12",descrizione:"Negozio piano terra (esempio)",esito:esText(3),richiama:day(5),vecchio:true}
   ];
   try{
-    for(let i=0;i<stab.length;i++){await S.db.collection(C("stabili")).doc("esempio-"+(i+1)).set(Object.assign({agente:ag[i%ag.length],foto:[],aggiornato:iso(0)},stab[i]))}
-    for(let i=0;i<acq.length;i++){const a=acq[i],t=a.vecchio?iso(-75):iso(-i);delete a.vecchio;
-      await S.db.collection(C("acquisizioni")).doc("esempio-"+(i+1)).set(Object.assign({agente:ag[i%ag.length],note:"",foto:[],creato:t,ultimaAzione:t,storico:[{data:t,agente:ag[i%ag.length],esito:a.esito,nota:"Acquisizione inserita (esempio)"}]},a))}
+    for(let i=0;i<stab.length;i++){const s=stab[i];s.key=chiave(s);await S.db.collection(C("stabili")).doc("esempio-"+(i+1)).set(Object.assign({agente:ag[i%ag.length],foto:[],aggiornato:iso(0),aggDa:"app"},s))}
+    for(let i=0;i<acq.length;i++){const a=acq[i],t=a.vecchio?iso(-75):iso(-i);delete a.vecchio;a.stabile=chiave(a);
+      await S.db.collection(C("acquisizioni")).doc("esempio-"+(i+1)).set(Object.assign({agente:ag[i%ag.length],origine:L.origini[1]||L.origini[0],email:"",note:"",gestito:"",agenziaNome:"",agenziaTel:"",cosaInviare:"",pratica:"Aperta",foto:[],creato:t,ultimaAzione:t,aggDa:"app",
+        storico:[{rid:rid(),data:t,tipo:"Altro",agente:ag[i%ag.length],esito:a.esito,nota:"Acquisizione inserita (esempio)",prom:a.richiama||"",pratica:"Aperta"}]},a))}
     toast("Dati di esempio caricati");
   }catch(e){toast("Caricamento non riuscito")}
 }
@@ -353,6 +416,7 @@ async function clearTest(){
 async function boot(){
   S.me = lsGet("riz-me");
   S.tab = ["oggi","acq","zone"].includes(lsGet("riz-tab"))?lsGet("riz-tab"):"oggi";
+  try{const c=lsGet("riz-liste");if(c)applyListe(JSON.parse(c))}catch(e){}
   render();
   if(!window.claude||!window.claude.use){S.offline=true;render();return}
   const db = await window.claude.use("db");
@@ -361,9 +425,9 @@ async function boot(){
   window.claude.use("downloads").then(d=>{S.dl=d}).catch(()=>{});
   window.claude.use("assets").then(a=>{S.assets=a;if(SH&&(SH.type==="stab"||SH.type==="acqForm"))redrawForm()}).catch(()=>{});
   subscribe();
-  db.doc("impostazioni/agenti").onSnapshot(s=>{
-    const n=s.exists&&Array.isArray(s.data().nomi)?s.data().nomi.filter(Boolean):null;
-    S.agenti = n&&n.length?n.slice():DEFAULT_AGENTI.slice(); render();
+  db.doc("impostazioni/liste").onSnapshot(s=>{
+    if(s.exists)applyListe(s.data());
+    else db.doc("impostazioni/agenti").get().then(a=>{const n=a.exists&&Array.isArray(a.data().nomi)?a.data().nomi.filter(Boolean):null;applyListe(n&&n.length?{agenti:n}:null);S.listeDalGestionale=false;render()}).catch(()=>{});
   },()=>{});
 }
 async function save(ref,body,merge){
@@ -376,28 +440,27 @@ async function save(ref,body,merge){
   }
 }
 
-/* ---------- main render ---------- */
+/* ---------- vista principale ---------- */
 function render(){
   document.querySelectorAll(".tab").forEach(b=>b.setAttribute("aria-current",b.dataset.tab===S.tab?"page":"false"));
   $("#whoBtn").textContent = S.me?S.me:"Chi sei?";
   $("#fabTxt").textContent = S.tab==="zone"?"Nuovo civico":"Nuova acquisizione";
-  const m=$("#main"); const keepQ = document.activeElement&&document.activeElement.id==="q";
+  const m=$("#main"); const ae=document.activeElement; const keep = ae&&(ae.id==="q"||ae.id==="zq")?ae.id:"";
   let h = S.offline?`<div class="banner">Non riesco a leggere l'archivio. Controlla la connessione e di aver fatto l'accesso, poi riapri l'app.</div>`:"";
   if(S.test) h+=`<div class="banner testb"><span>Modalità prova: stai usando un archivio separato, i dati veri non vengono toccati.</span><button type="button" class="btn sec" data-testoff>Esci</button></div>`;
   if(S.tab==="oggi") h+=viewOggi(); else if(S.tab==="acq") h+=viewAcq(); else h+=viewZone();
   m.innerHTML=`<div class="view">${h}</div>`;
-  if(keepQ){const q=$("#q");if(q){q.focus();q.setSelectionRange(q.value.length,q.value.length)}}
+  if(keep){const q=document.getElementById(keep);if(q){q.focus();q.setSelectionRange(q.value.length,q.value.length)}}
 }
 const loading=()=>`<div class="empty"><p>Carico l'archivio…</p></div>`;
+function pill(e){const n=esNum(e);return `<span class="pill ${(ESITO_INFO[n]||{c:"p0"}).c}"><i></i>${esc(esShort(e))}</span>`}
 
 function rowAcq(a){
-  const e=ESITI[a.esito||"0"]||ESITI["0"]; const w=(a.esito==="1"||a.esito==="3")?whenLabel(a.richiama):null;
-  const idle=idleDays(a)>IDLE_DAYS && a.esito!=="0";
-  const tipo=[a.tipo,a.uso].filter(Boolean).join(" · ");
+  const w=needsRich(a.esito)&&attiva(a)?whenLabel(a.richiama):null;
   return `<button class="row" type="button" data-open-acq="${esc(a.id)}">
     <span class="name${a.nome?"":" unk"}">${esc(a.nome||(a.ignoto?"Cliente non noto":"Senza nome"))}</span>
-    <span class="side"><span class="pill ${e.c}"><i></i>${e.t}</span>${w?`<span class="when ${w.c}">${esc(w.t)}</span>`:""}</span>
-    <span class="meta">${a.gestito?`<span class="bd ${a.gestito==="Privato"?"v":"a"}">${a.gestito==="Privato"?"Privato":"Agenzia"+(a.agenziaNome?" "+esc(a.agenziaNome):"")}</span>`:""}${tipo?`<span>${esc(tipo)}</span>`:""}${addrOf(a)?`<span>${esc(addrOf(a))}</span>`:""}${a.agente?`<span>${esc(a.agente)}</span>`:""}${idle?`<span class="idle">Fermo da ${idleDays(a)} gg</span>`:""}</span>
+    <span class="side">${pill(a.esito)}${w?`<span class="when ${w.c}">${esc(w.t)}</span>`:""}</span>
+    <span class="meta">${a.pratica&&a.pratica!=="Aperta"?`<span class="bd g">${esc(a.pratica)}</span>`:""}${a.gestito?`<span class="bd ${a.gestito==="Privato"?"v":"a"}">${a.gestito==="Privato"?"Privato":"Agenzia"+(a.agenziaNome?" "+esc(a.agenziaNome):"")}</span>`:""}${a.tipoContatto?`<span>${esc(a.tipoContatto)}</span>`:""}${addrOf(a)?`<span>${esc(addrOf(a))}</span>`:""}${a.agente?`<span>${esc(a.agente)}</span>`:""}${isIdle(a)?`<span class="idle">Fermo da ${idleDays(a)} gg</span>`:""}</span>
   </button>`;
 }
 
@@ -405,9 +468,10 @@ function viewOggi(){
   if(!S.loaded.a&&!S.offline) return loading();
   const t=todayISO();
   const mine=a=>!S.me||!a.agente||a.agente===S.me;
-  const due=S.acq.filter(a=>(a.esito==="1"||a.esito==="3")&&a.richiama&&a.richiama<=t&&mine(a)).sort((x,y)=>x.richiama.localeCompare(y.richiama));
-  const send=S.acq.filter(a=>a.esito==="2"&&mine(a));
-  const idle=S.acq.filter(a=>a.esito!=="0"&&idleDays(a)>IDLE_DAYS&&mine(a)).sort((x,y)=>idleDays(y)-idleDays(x));
+  const live=S.acq.filter(a=>attiva(a)&&mine(a));
+  const due=live.filter(a=>needsRich(a.esito)&&a.richiama&&a.richiama<=t).sort((x,y)=>x.richiama.localeCompare(y.richiama));
+  const send=live.filter(a=>esNum(a.esito)===2);
+  const idle=live.filter(isIdle).sort((x,y)=>idleDays(y)-idleDays(x));
   const label=new Date().toLocaleDateString("it-IT",{weekday:"long",day:"numeric",month:"long"});
   let h=`<div class="lvl-h"><h2>${esc(label.charAt(0).toUpperCase()+label.slice(1))}</h2><span class="tag">${S.me?esc(S.me):"Tutti gli agenti"}</span></div>`;
   if(!S.me) h+=`<p class="hint">Tocca "Chi sei?" in alto e scegli il tuo nome: vedrai solo i tuoi clienti e le schede saranno firmate da te.</p>`;
@@ -416,87 +480,116 @@ function viewOggi(){
   h+=sec("Da richiamare oggi o in ritardo",due,"Nessuna chiamata in programma per oggi.");
   h+=sec("Da inviare (mail, WhatsApp, documenti)",send,"Niente da inviare.");
   h+=sec("Fermi da più di 2 mesi",idle,"Nessun contatto fermo da più di 2 mesi.");
+  h+=`<p class="hint">Qui compaiono solo le pratiche aperte. Quelle in pausa o chiuse sono nella scheda Acquisizioni.</p>`;
   return h;
 }
 
 function viewAcq(){
   if(!S.loaded.a&&!S.offline) return loading();
   const q=key(S.q);
-  const counts={tutti:S.acq.length,mie:S.acq.filter(a=>a.agente===S.me).length,"1":0,"2":0,"3":0,ferme:0,
-    privati:S.acq.filter(a=>a.gestito==="Privato").length,agenzie:S.acq.filter(a=>a.gestito==="Altra agenzia").length};
-  S.acq.forEach(a=>{if(counts[a.esito]!=null)counts[a.esito]++; if(a.esito!=="0"&&idleDays(a)>IDLE_DAYS)counts.ferme++});
-  const F=[["tutti","Tutte"],["mie","Mie"],["1","Da richiamare"],["2","Da inviare"],["3","Ci richiama"],["ferme","Ferme"],["privati","Privati"],["agenzie","Altre agenzie"]];
+  const F=[["tutti","Tutte"],["mie","Mie"],["e1","Da ricontattare"],["e2","Da inviare"],["e3","Ci richiama"],["e4","Ricontattati"],["ferme","Ferme"],["pausa","In pausa"],["chiuse","Chiuse"],["privati","Privati"],["agenzie","Altre agenzie"]];
+  const test={
+    tutti:()=>true, mie:a=>a.agente===S.me,
+    e1:a=>attiva(a)&&esNum(a.esito)===1, e2:a=>attiva(a)&&esNum(a.esito)===2, e3:a=>attiva(a)&&esNum(a.esito)===3, e4:a=>esNum(a.esito)===4,
+    ferme:isIdle, pausa:a=>a.pratica==="In pausa", chiuse:a=>a.pratica==="Chiusa",
+    privati:a=>a.gestito==="Privato", agenzie:a=>a.gestito==="Altra agenzia"
+  };
+  if(!test[S.filtro])S.filtro="tutti";
   const arr=S.acq.filter(a=>{
-    if(S.filtro==="mie"&&a.agente!==S.me)return false;
-    if(["1","2","3"].includes(S.filtro)&&a.esito!==S.filtro)return false;
-    if(S.filtro==="ferme"&&!(a.esito!=="0"&&idleDays(a)>IDLE_DAYS))return false;
-    if(S.filtro==="privati"&&a.gestito!=="Privato")return false;
-    if(S.filtro==="agenzie"&&a.gestito!=="Altra agenzia")return false;
-    if(q){const hay=key([a.nome,a.telefono,a.macrozona,a.via,a.civico,a.descrizione,a.note,a.agente,a.tipo,a.uso,a.gestito,a.agenziaNome,a.agenziaTel].join(" "));if(!q.split(" ").every(w=>hay.includes(w)))return false}
+    if(!test[S.filtro](a))return false;
+    if(q){const hay=key([a.cid,a.nome,a.telefono,a.email,a.citta,a.zona,a.via,a.civico,a.descrizione,a.note,a.agente,a.tipoContatto,a.gestito,a.agenziaNome,a.agenziaTel,a.origine].join(" "));if(!q.split(" ").every(w=>hay.includes(w)))return false}
     return true;
-  }).sort((x,y)=>String(y.ultimaAzione||y.creato||"").localeCompare(String(x.ultimaAzione||x.creato||"")));
-  let h=`<label class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="q" type="search" placeholder="Cerca nome, telefono, via…" value="${esc(S.q)}" autocomplete="off"></label>`;
-  h+=`<div class="chips">${F.filter(f=>f[0]!=="mie"||S.me).map(f=>`<button class="chip" type="button" data-filtro="${f[0]}" aria-pressed="${S.filtro===f[0]}">${f[1]} <b>${counts[f[0]]}</b></button>`).join("")}</div>`;
+  }).sort((x,y)=>String(lastAct(y)).localeCompare(String(lastAct(x))));
+  let h=`<label class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="q" type="search" placeholder="Cerca nome, telefono, via, codice…" value="${esc(S.q)}" autocomplete="off"></label>`;
+  h+=`<div class="chips">${F.filter(f=>f[0]!=="mie"||S.me).map(f=>`<button class="chip" type="button" data-filtro="${f[0]}" aria-pressed="${S.filtro===f[0]}">${f[1]} <b>${S.acq.filter(test[f[0]]).length}</b></button>`).join("")}</div>`;
   if(!S.acq.length) return h+`<div class="empty"><h3>L'archivio è vuoto</h3><p>Tocca "Nuova acquisizione" per registrare il primo contatto: nome, telefono, indirizzo ed esito.</p></div>`;
   if(!arr.length) return h+`<div class="empty"><p>Nessuna acquisizione corrisponde alla ricerca.</p></div>`;
   return h+`<div class="list">${arr.map(rowAcq).join("")}</div>`;
 }
 
-/* ---------- zone: Macrozona → Via → Civico ---------- */
+/* ---------- zone: Città → Zona → Via → Civico ---------- */
 function zoneFilter(s){
-  if(!s)return S.zf==="tutti";
+  if(S.zf==="tutti")return true;
+  if(!s)return false;
   const c=mkCounts(s);
   if(S.zf==="vendita")return c.v>0; if(S.zf==="affitto")return c.a>0;
   if(S.zf==="privati")return c.p>0; if(S.zf==="agenzie")return c.ag>0;
-  if(S.zf==="commerciali")return s.commerciali==="Sì"; if(S.zf==="garage")return s.garage==="Sì";
+  if(S.zf==="commerciali")return s.commerciali==="Sì"; if(S.zf==="garage")return hasGarage(s);
   return true;
 }
+const NOCITY="Senza città", NOZONE="Senza zona";
 function tree(){
-  const T=new Map(MACRO.map(m=>[m,{name:m,kids:new Map()}]));
+  const T=new Map();
+  const node=(map,name,extra)=>{const k=key(name);if(!map.has(k))map.set(k,Object.assign({name,kids:new Map()},extra||{}));return map.get(k)};
+  S.L.citta.forEach(c=>{const Cn=node(T,c);S.L.zone.forEach(z=>node(Cn.kids,z,{listed:true}))});
   const add=(x,isStab)=>{
-    const mz=macroOf(x),v=cap(x.via),n=civN(x.civico); if(!mz||!v)return;
-    const Z=T.get(mz);
-    if(!Z.kids.has(key(v)))Z.kids.set(key(v),{name:v,kids:new Map()}); const V=Z.kids.get(key(v));
-    if(!n)return; if(!V.kids.has(n))V.kids.set(n,{name:n,stab:null,acq:[]}); const N=V.kids.get(n);
+    const v=cap(x.via),n=civN(x.civico); if(!v)return;
+    const Cn=node(T,norm(x.citta)||NOCITY); const Z=node(Cn.kids,norm(x.zona)||NOZONE); const V=node(Z.kids,v);
+    if(!n)return; const N=V.kids.get(n)||{name:n,stab:null,acq:[]}; V.kids.set(n,N);
     if(isStab)N.stab=x; else N.acq.push(x);
   };
   S.stabili.forEach(s=>add(s,true)); S.acq.forEach(a=>add(a,false));
-  if(S.zf!=="tutti"){ // prune
-    T.forEach(Z=>{Z.kids.forEach((V,vk)=>{V.kids.forEach((N,nk)=>{if(!zoneFilter(N.stab))V.kids.delete(nk)}); if(!V.kids.size)Z.kids.delete(vk)})});
-  }
+  if(S.zf!=="tutti"){ T.forEach(Cn=>Cn.kids.forEach(Z=>{Z.kids.forEach((V,vk)=>{V.kids.forEach((N,nk)=>{if(!zoneFilter(N.stab))V.kids.delete(nk)}); if(!V.kids.size)Z.kids.delete(vk)})})); }
   return T;
 }
-function countCiv(node,d){if(d===2)return 1;let n=0;node.kids.forEach(k=>n+=countCiv(k,d+1));return n}
-function mkTotals(node,d){let v=0,a=0;const walk=(n,dd)=>{if(dd===2){if(n.stab){const c=mkCounts(n.stab);v+=c.v;a+=c.a}return}n.kids.forEach(k=>walk(k,dd+1))};walk(node,d);return{v,a}}
-const LV=["Macrozone","Vie","Civici"];
+function countCiv(node,d){if(d===3)return 1;let n=0;node.kids.forEach(k=>n+=countCiv(k,d+1));return n}
+function mkTotals(node,d){let v=0,a=0;const walk=(n,dd)=>{if(dd===3){if(n.stab){const c=mkCounts(n.stab);v+=c.v;a+=c.a}return}n.kids.forEach(k=>walk(k,dd+1))};walk(node,d);return{v,a}}
+const LV=["Città","Zone","Vie","Civici"];
+function rowNode(k,v,d){const n=countCiv(v,d),t=mkTotals(v,d);return `<button class="row" type="button" data-go="${esc(k)}"><span class="name">${esc(v.name)}</span><span class="side"><span class="chev">›</span></span><span class="meta"><span>${n?`${n} civic${n===1?"o":"i"}`:"nessun civico"}</span>${t.v?`<span class="bd v">${t.v} in vendita</span>`:""}${t.a?`<span class="bd a">${t.a} in affitto</span>`:""}</span></button>`}
+function viaIndex(){
+  const m=new Map();
+  const add=x=>{const v=cap(x.via);if(!v)return;const c=norm(x.citta),z=norm(x.zona);const k=key(v)+"|"+key(c)+"|"+key(z);
+    const e=m.get(k)||{via:v,citta:c,zona:z,civ:new Set()};if(x.civico)e.civ.add(civN(x.civico));m.set(k,e)};
+  S.stabili.forEach(add);S.acq.forEach(add);
+  return [...m.values()];
+}
+function viaMatches(q,limit){
+  const w=key(q).split(" ").filter(Boolean); if(!w.length)return[];
+  return viaIndex().filter(e=>{const h=key(e.via);return w.every(x=>h.includes(x))}).sort((a,b)=>a.via.localeCompare(b.via,"it")).slice(0,limit||50);
+}
 function viewZone(){
   if(!S.loaded.s&&!S.offline) return loading();
+  let h=`<label class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="zq" type="search" placeholder="Cerca una via (es. francesco)" value="${esc(S.zq)}" autocomplete="off"></label>`;
+  if(norm(S.zq)){
+    const r=viaMatches(S.zq);
+    if(!r.length) return h+`<div class="empty"><p>Nessuna via censita contiene "${esc(S.zq)}". Per aggiungerla tocca "Nuovo civico".</p></div>`;
+    return h+`<div class="list">${r.map(e=>`<button class="row" type="button" data-govia="${esc(JSON.stringify([e.citta||NOCITY,e.zona||NOZONE,e.via]))}"><span class="name">${esc(e.via)}</span><span class="side"><span class="chev">›</span></span><span class="meta"><span>${esc([e.zona,e.citta].filter(Boolean).join(" · ")||"Senza zona")}</span><span>${e.civ.size} civic${e.civ.size===1?"o":"i"}</span></span></button>`).join("")}</div>`;
+  }
   const T=tree(); let node={kids:T}; const names=[];
   for(let i=0;i<S.path.length;i++){const nx=node.kids.get(S.path[i]);if(!nx){S.path=S.path.slice(0,i);break}node=nx;names.push(nx.name)}
   const d=S.path.length;
-  const ZF=[["tutti","Tutti"],["vendita","In vendita"],["affitto","In affitto"],["privati","Privati"],["agenzie","Altre agenzie"],["commerciali","Locali comm."],["garage","Garage"]];
-  let h=`<div class="crumbs"><button type="button" data-crumb="0">Tutte le macrozone</button>${names.map((n,i)=>`<span>›</span><button type="button" data-crumb="${i+1}">${esc(n)}</button>`).join("")}</div>`;
+  const ZF=[["tutti","Tutti"],["vendita","In vendita"],["affitto","In affitto"],["privati","Privati"],["agenzie","Agenzie e società"],["commerciali","Locali comm."],["garage","Garage"]];
+  h+=`<div class="crumbs"><button type="button" data-crumb="0">Tutte le città</button>${names.map((n,i)=>`<span>›</span><button type="button" data-crumb="${i+1}">${esc(n)}</button>`).join("")}</div>`;
   h+=`<div class="lvl-h"><h2>${d?esc(names[d-1]):"Censimento"}</h2><span class="tag">${LV[d]}</span></div>`;
   h+=`<div class="chips">${ZF.map(f=>`<button class="chip" type="button" data-zf="${f[0]}" aria-pressed="${S.zf===f[0]}">${f[1]}</button>`).join("")}</div>`;
-  const kids=[...node.kids.entries()];
+  let kids=[...node.kids.entries()];
   if(d===0){
-    return h+`<div class="list">${kids.map(([k,v])=>{const n=countCiv(v,0),t=mkTotals(v,0);return `<button class="row" type="button" data-go="${esc(k)}"><span class="name">${esc(v.name)}</span><span class="side"><span class="chev">›</span></span><span class="meta"><span>${n} civic${n===1?"o":"i"}</span>${t.v?`<span class="bd v">${t.v} in vendita</span>`:""}${t.a?`<span class="bd a">${t.a} in affitto</span>`:""}</span></button>`}).join("")}</div>`
-      +(S.stabili.length?"":`<p class="hint">Nessun civico censito ancora. Apri una macrozona e tocca "Nuovo civico".</p>`);
+    kids=kids.filter(([k,v])=>countCiv(v,0)||S.L.citta.some(c=>key(c)===k));
+    return h+`<div class="list">${kids.map(([k,v])=>rowNode(k,v,0)).join("")}</div>`+(S.stabili.length?"":`<p class="hint">Nessun civico censito ancora. Apri una città, poi una zona, e tocca "Nuovo civico".</p>`);
   }
   if(d===1){
+    const full=kids.filter(([k,v])=>countCiv(v,1)>0), empty=kids.filter(([k,v])=>!countCiv(v,1)&&v.listed);
+    let x=full.length?`<div class="list">${full.map(([k,v])=>rowNode(k,v,1)).join("")}</div>`:`<p class="hint">${S.zf==="tutti"?"Nessun civico censito in questa città.":"Nessun civico corrisponde al filtro."}</p>`;
+    if(S.zf==="tutti"&&empty.length){
+      x+=S.allZones||!full.length?`<div class="grow"><span class="tag">Zone ancora vuote</span><span class="count">${empty.length}</span></div><div class="list">${empty.map(([k,v])=>rowNode(k,v,1)).join("")}</div>`
+        :`<button class="btn sec" type="button" data-allzones style="width:100%">Mostra le altre zone (${empty.length})</button>`;
+    }
+    return h+x;
+  }
+  if(d===2){
     kids.sort((a,b)=>a[1].name.localeCompare(b[1].name,"it"));
-    if(!kids.length) return h+`<div class="empty"><h3>Nessuna via in ${esc(names[0])}</h3><p>${S.zf==="tutti"?"Tocca \"Nuovo civico\" per aprire la prima scheda di questa macrozona.":"Nessun civico corrisponde al filtro."}</p></div>`;
-    return h+`<div class="list">${kids.map(([k,v])=>{const n=countCiv(v,1),t=mkTotals(v,1);return `<button class="row" type="button" data-go="${esc(k)}"><span class="name">${esc(v.name)}</span><span class="side"><span class="chev">›</span></span><span class="meta"><span>${n} civic${n===1?"o":"i"}</span>${t.v?`<span class="bd v">${t.v} V</span>`:""}${t.a?`<span class="bd a">${t.a} A</span>`:""}</span></button>`}).join("")}</div>`;
+    if(!kids.length) return h+`<div class="empty"><h3>Nessuna via in ${esc(names[1])}</h3><p>${S.zf==="tutti"?"Tocca \"Nuovo civico\" per aprire la prima scheda di questa zona.":"Nessun civico corrisponde al filtro."}</p></div>`;
+    return h+`<div class="list">${kids.map(([k,v])=>rowNode(k,v,2)).join("")}</div>`;
   }
   kids.sort((a,b)=>(parseInt(a[1].name)||0)-(parseInt(b[1].name)||0)||a[1].name.localeCompare(b[1].name));
   h+=`<div class="civici">${kids.map(([k,v])=>{const s=v.stab,nA=v.acq.length,c=s?mkCounts(s):{v:0,a:0};
-    return `<button class="civ ${nA?"has":""}" type="button" data-civ="${esc(k)}"><span class="n">${esc(v.name)}</span><span class="s">${s?esc(TIPO_SHORT[s.tipoStabile]||"Scheda"):"Senza scheda"}</span>
-    <span class="badges">${c.v?`<span class="bd v">${c.v} V</span>`:""}${c.a?`<span class="bd a">${c.a} A</span>`:""}${s&&s.commerciali==="Sì"?`<span class="bd g">Neg.</span>`:""}${s&&s.garage==="Sì"?`<span class="bd g">Box</span>`:""}${s&&s.ammTel?`<span class="bd g">Amm.</span>`:""}${s&&s.foto&&s.foto.length?`<span class="bd g">${s.foto.length} foto</span>`:""}${nA?`<span class="bd v">${nA} cont.</span>`:""}</span></button>`}).join("")}<button class="civ add" type="button" data-newciv>+ Civico</button></div>`;
-  h+=`<p class="hint">V = appartamenti in vendita · A = in affitto · Neg. = locali commerciali · Box = garage · Amm. = numero amministratore</p>`;
+    return `<button class="civ ${nA?"has":""}" type="button" data-civ="${esc(k)}"><span class="n">${esc(v.name)}</span><span class="s">${s?esc(TIPO_SHORT[s.tipoStabile]||s.tipoStabile||"Scheda"):"Senza scheda"}</span>
+    <span class="badges">${c.v?`<span class="bd v">${c.v} V</span>`:""}${c.a?`<span class="bd a">${c.a} A</span>`:""}${s&&s.commerciali==="Sì"?`<span class="bd g">Neg.</span>`:""}${s&&hasGarage(s)?`<span class="bd g">Box</span>`:""}${s&&s.ammTel?`<span class="bd g">Amm.</span>`:""}${s&&s.foto&&s.foto.length?`<span class="bd g">${s.foto.length} foto</span>`:""}${nA?`<span class="bd v">${nA} cont.</span>`:""}</span></button>`}).join("")}<button class="civ add" type="button" data-newciv>+ Civico</button></div>`;
+  h+=`<p class="hint">V = in vendita · A = in affitto · Neg. = locali commerciali · Box = garage · Amm. = numero amministratore</p>`;
   return h;
 }
 
-/* ---------- sheets ---------- */
+/* ---------- schede ---------- */
 let SH=null;
 function closeSheet(){lightbox(null);SH=null;$("#sheetRoot").innerHTML="";document.body.style.overflow=""}
 function openSheet(o){SH=o;document.body.style.overflow="hidden";drawSheet()}
@@ -506,23 +599,34 @@ function shell(title,body,foot){
   <div class="sheet-h gut"><button class="iconbtn" type="button" data-close aria-label="Chiudi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button><h2>${esc(title)}</h2></div>
   <div class="sheet-b"><div class="sheet-b-in gut">${body}</div></div>${foot?`<div class="sheet-f gut"><div class="in">${foot}</div></div>`:""}</div>`;
 }
-function viaList(){const all=[...S.stabili,...S.acq];return `<datalist id="dl-via">${[...new Set(all.map(x=>cap(x.via)).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"it")).map(v=>`<option value="${esc(v)}">`).join("")}</datalist>`}
-function macroSelect(id,val){return `<select id="${id}"><option value="">Scegli…</option>${MACRO.map(m=>`<option ${val===m?"selected":""}>${m}</option>`).join("")}</select>`}
-function agenteSelect(id,val){return `<select id="${id}"><option value="">Scegli…</option>${S.agenti.map(n=>`<option ${val===n?"selected":""}>${esc(n)}</option>`).join("")}</select>`}
+function selectOf(id,opts,val,ph){
+  const list=opts.slice(); if(val&&!list.includes(val))list.push(val);
+  return `<select id="${id}"><option value="">${ph||"Scegli…"}</option>${list.map(o=>`<option ${val===o?"selected":""}>${esc(o)}</option>`).join("")}</select>`;
+}
 function addrFields(x,pfx){
-  return `<div class="f"><label for="${pfx}macro">Macrozona</label>${macroSelect(pfx+"macro",macroOf(x))}</div>
+  return `<div class="two"><div class="f"><label for="${pfx}citta">Città</label>${selectOf(pfx+"citta",S.L.citta,x.citta)}</div>
+  <div class="f"><label for="${pfx}zona">Zona</label>${selectOf(pfx+"zona",S.L.zone,x.zona)}</div></div>
   <div class="two" style="grid-template-columns:2.4fr 1fr">
-  <div class="f"><label for="${pfx}via">Via</label><input id="${pfx}via" list="dl-via" value="${esc(x.via||"")}" autocomplete="off" placeholder="Es. Via Tiburtina"></div>
+  <div class="f" style="position:relative"><label for="${pfx}via">Via</label><input id="${pfx}via" data-viaq="${pfx}" value="${esc(x.via||"")}" autocomplete="off" placeholder="Scrivi una parola, es. francesco"><div class="sugg" id="${pfx}sugg"></div></div>
   <div class="f"><label for="${pfx}civico">Civico</label><input id="${pfx}civico" value="${esc(x.civico||"")}" autocomplete="off" placeholder="Es. 12/A"></div></div>`;
 }
-function segBtns(name,opts,val){return `<div class="seg" data-seg="${name}">${opts.map(o=>`<button type="button" data-v="${esc(o)}" aria-pressed="${val===o}">${esc(o)}</button>`).join("")}</div>`}
-function esitoBtns(val){return `<div class="seg esiti" data-seg="esito">${["1","2","3","0"].map(k=>`<button type="button" data-v="${k}" aria-pressed="${val===k}"><span class="pill ${ESITI[k].c}"><i></i>${ESITI[k].t}</span><span>${ESITI[k].d}</span></button>`).join("")}</div>`}
+function drawSugg(pfx){
+  const box=document.getElementById(pfx+"sugg"); const inp=document.getElementById(pfx+"via"); if(!box||!inp)return;
+  const q=norm(inp.value); const r=q.length>=2?viaMatches(q,8).filter(e=>key(e.via)!==key(q)||viaMatches(q,8).length>1):[];
+  box.innerHTML=r.length?r.map(e=>`<button type="button" data-sugg="${esc(JSON.stringify([pfx,e.via,e.citta,e.zona]))}"><b>${esc(e.via)}</b><small>${esc([e.zona,e.citta].filter(Boolean).join(" · "))}</small></button>`).join(""):"";
+}
+function segBtns(name,opts,val){const list=opts.slice();if(val&&!list.includes(val))list.push(val);return `<div class="seg" data-seg="${name}">${list.map(o=>`<button type="button" data-v="${esc(o)}" aria-pressed="${val===o}">${esc(o)}</button>`).join("")}</div>`}
+function esitoBtns(val){
+  return `<div class="seg esiti" data-seg="esito">${S.L.esiti.slice(0,4).map((t,i)=>{const n=esNum(t)||i+1;return `<button type="button" data-v="${esc(t)}" aria-pressed="${val===t}"><span class="pill ${(ESITO_INFO[n]||{c:"p0"}).c}"><i></i>${esc(esShort(t))}</span><span>${esc((ESITO_INFO[n]||{}).d||"")}</span></button>`}).join("")}</div>`;
+}
 function richiamaBlock(val,show){
-  const opts=[["0","Oggi"],["1","Domani"],["3","Tra 3 giorni"],["7","Tra una settimana"],["30","Tra un mese"]];
-  return `<div class="f" id="richWrap" ${show?"":"hidden"}><span class="lab">Richiama</span>
+  const opts=[["0","Oggi"],["1","Domani"],["3","Tra 3 giorni"],["7","Tra una settimana"],["14","Tra 2 settimane"],["30","Tra un mese"]];
+  return `<div class="f" id="richWrap" ${show?"":"hidden"}><span class="lab">Data promemoria <span class="req">*</span></span>
   <div class="seg" data-seg="rich">${opts.map(o=>`<button type="button" data-v="${todayISO(+o[0])}" aria-pressed="${val===todayISO(+o[0])}">${o[1]}</button>`).join("")}</div>
   <input id="f-richiama" type="date" value="${esc(val||"")}" aria-label="Data a scelta"></div>`;
 }
+function inviaBlock(val,show){return `<div class="f" id="invWrap" ${show?"":"hidden"}><label for="f-invia">Cosa inviare</label><input id="f-invia" value="${esc(val||"")}" autocomplete="off" placeholder="Es. valutazione, planimetria, link annuncio"></div>`}
+
 /* ---------- foto ---------- */
 const imgSrc = id => window.__photoSrc ? window.__photoSrc(id) : "";
 function fotoStrip(list){
@@ -587,42 +691,46 @@ function lightbox(list,i){
   lightbox.list=list;
 }
 
+const GESTORI=[["Privato","Privato"],["Agenzia","Altra agenzia"],["Società","Società"]];
 function mkRow(m,i){
+  const ag=m.gestore==="Agenzia"||m.gestore==="Società";
   return `<div class="mk"><div class="mk-h"><b>Immobile ${i+1}</b><button class="x" type="button" data-mkdel="${i}">Rimuovi</button></div>
   <div class="two"><div class="f"><span class="lab">Contratto</span><div class="seg" data-mk="${i}" data-mkf="contratto">${["Vendita","Affitto"].map(o=>`<button type="button" data-v="${o}" aria-pressed="${m.contratto===o}">${o}</button>`).join("")}</div></div>
-  <div class="f"><span class="lab">Trattato da</span><div class="seg" data-mk="${i}" data-mkf="gestore">${["Privato","Agenzia"].map(o=>`<button type="button" data-v="${o}" aria-pressed="${m.gestore===o}">${o==="Agenzia"?"Altra agenzia":o}</button>`).join("")}</div></div></div>
-  <div class="two" ${m.gestore==="Agenzia"?"":"hidden"}><div class="f"><label for="mk-ag-${i}">Quale agenzia</label><input id="mk-ag-${i}" data-mki="${i}" data-mkf="agenzia" value="${esc(m.agenzia||"")}" autocomplete="off"></div>
-  <div class="f"><label for="mk-agtel-${i}">Tel. agenzia</label><input id="mk-agtel-${i}" data-mki="${i}" data-mkf="agTel" type="tel" inputmode="tel" value="${esc(m.agTel||"")}" autocomplete="off"></div></div>
+  <div class="f"><span class="lab">Tipo</span><div class="seg" data-mk="${i}" data-mkf="tipoImm">${["Appartamento","Locale"].map(o=>`<button type="button" data-v="${o}" aria-pressed="${m.tipoImm===o}">${o}</button>`).join("")}</div></div></div>
+  <div class="f"><span class="lab">Trattato da</span><div class="seg" data-mk="${i}" data-mkf="gestore">${GESTORI.map(o=>`<button type="button" data-v="${o[0]}" aria-pressed="${m.gestore===o[0]}">${o[1]}</button>`).join("")}</div></div>
+  <div class="two"><div class="f"><label for="mk-ag-${i}">${ag?(m.gestore==="Società"?"Quale società":"Quale agenzia"):"Nome (se noto)"}</label><input id="mk-ag-${i}" data-mki="${i}" data-mkf="agenzia" value="${esc(m.agenzia||"")}" autocomplete="off"></div>
+  <div class="f"><label for="mk-tel-${i}">Telefono</label><input id="mk-tel-${i}" data-mki="${i}" data-mkf="tel" type="tel" inputmode="tel" value="${esc(m.tel||"")}" autocomplete="off" placeholder="Del cartello o dell'agenzia"></div></div>
   <div class="two"><div class="f"><label for="mk-piano-${i}">Piano / interno</label><input id="mk-piano-${i}" data-mki="${i}" data-mkf="piano" value="${esc(m.piano||"")}" autocomplete="off"></div>
-  <div class="f"><label for="mk-tel-${i}">Telefono cartello</label><input id="mk-tel-${i}" data-mki="${i}" data-mkf="tel" type="tel" inputmode="tel" value="${esc(m.tel||"")}" autocomplete="off"></div></div>
-  <div class="f"><label for="mk-note-${i}">Note</label><input id="mk-note-${i}" data-mki="${i}" data-mkf="note" value="${esc(m.note||"")}" autocomplete="off" placeholder="Es. trilocale, cartello sul balcone"></div></div>`;
+  <div class="f"><label for="mk-note-${i}">Note</label><input id="mk-note-${i}" data-mki="${i}" data-mkf="note" value="${esc(m.note||"")}" autocomplete="off" placeholder="Es. trilocale, cartello sul balcone"></div></div></div>`;
 }
 
 function drawSheet(soft){
   if(!SH)return; const r=$("#sheetRoot"); let html="";
   const sb=$(".sheet-b",r); const scroll = sb?sb.scrollTop:0;
-  const keepNota = soft&&$("#h-nota")?$("#h-nota").value:"";
+  const keep = soft?["h-nota","h-tipo","h-pratica"].map(id=>[id,$("#"+id)?$("#"+id).value:null]):[];
   if(SH.type==="acqForm"){
-    const a=SH.draft; const isNew=!SH.id;
+    const a=SH.draft; const isNew=!SH.id; const es=a.esito||esText(1);
     html=shell(isNew?"Nuova acquisizione":"Modifica acquisizione",`
-    ${viaList()}
-    <div class="f"><label for="f-agente">Agente <span class="req">*</span></label>${agenteSelect("f-agente",a.agente||S.me)}</div>
+    <div class="two"><div class="f"><label for="f-agente">Agente <span class="req">*</span></label>${selectOf("f-agente",S.L.agenti,a.agente||S.me)}</div>
+    <div class="f"><label for="f-origine">Origine</label>${selectOf("f-origine",S.L.origini,a.origine||(isNew?(S.L.origini.find(o=>/persona/i.test(o))||""):""))}</div></div>
     <fieldset><legend>Cliente</legend>
       <label class="check" for="f-ignoto"><input id="f-ignoto" type="checkbox" ${a.ignoto?"checked":""}><span>Non conosco nome e dati del cliente<small>Es. cartello senza nome, segnalazione di un vicino, immobile visto in zona</small></span></label>
       <div id="clienteDati" class="f" style="gap:12px" ${a.ignoto?"hidden":""}>
       <div class="f"><label for="f-nome">Nome e cognome</label><input id="f-nome" value="${esc(a.nome||"")}" autocomplete="off"></div>
-      <div class="f"><label for="f-tel">Telefono</label><input id="f-tel" type="tel" inputmode="tel" value="${esc(a.telefono||"")}" autocomplete="off"></div></div>
-      <div class="two"><div class="f"><span class="lab">Contratto</span>${segBtns("tipo",TIPI,a.tipo)}</div><div class="f"><span class="lab">Uso</span>${segBtns("uso",USI,a.uso)}</div></div>
+      <div class="two"><div class="f"><label for="f-tel">Telefono</label><input id="f-tel" type="tel" inputmode="tel" value="${esc(a.telefono||"")}" autocomplete="off"></div>
+      <div class="f"><label for="f-email">Email</label><input id="f-email" type="email" inputmode="email" value="${esc(a.email||"")}" autocomplete="off"></div></div></div>
+      <div class="f"><label for="f-tipoc">Tipo contatto</label>${selectOf("f-tipoc",S.L.tipiContatto,a.tipoContatto)}</div>
       <div class="f"><span class="lab">Immobile gestito da</span>${segBtns("gestito",["Privato","Altra agenzia"],a.gestito)}</div>
       <div class="two" id="agWrap" ${a.gestito==="Altra agenzia"?"":"hidden"}><div class="f"><label for="f-agenzia">Quale agenzia</label><input id="f-agenzia" value="${esc(a.agenziaNome||"")}" autocomplete="off" placeholder="Nome dell'agenzia"></div>
       <div class="f"><label for="f-agtel">Tel. agenzia</label><input id="f-agtel" type="tel" inputmode="tel" value="${esc(a.agenziaTel||"")}" autocomplete="off"></div></div>
     </fieldset>
     <fieldset><legend>Immobile</legend>${addrFields(a,"f-")}
-      <p class="hint">Macrozona, via e civico collegano il contatto alla scheda dello stabile.</p>
+      <p class="hint">Città, zona, via e civico collegano il contatto alla scheda dello stabile.</p>
       <div class="f"><label for="f-desc">Descrizione</label><textarea id="f-desc" placeholder="Es. trilocale 3° piano, 90 mq, da ristrutturare">${esc(a.descrizione||"")}</textarea></div>
     </fieldset>
     ${fotoBlock(a.foto)}
-    <fieldset><legend>Esito</legend>${esitoBtns(a.esito||"1")}${richiamaBlock(a.richiama||"",(a.esito||"1")==="1"||a.esito==="3")}
+    <fieldset><legend>Esito</legend>${esitoBtns(es)}${richiamaBlock(a.richiama||"",needsRich(es))}${inviaBlock(a.cosaInviare,esNum(es)===2)}
+      <div class="f"><span class="lab">Pratica</span>${segBtns("pratica",S.L.pratiche,a.pratica||"Aperta")}</div>
       <div class="f"><label for="f-note">Note</label><textarea id="f-note">${esc(a.note||"")}</textarea></div>
     </fieldset>
     ${!isNew?`<div id="delZone"><button class="btn danger" type="button" data-askdel>Elimina acquisizione</button></div>`:""}`,
@@ -630,56 +738,62 @@ function drawSheet(soft){
   }
   else if(SH.type==="acqView"){
     const a=S.acq.find(x=>x.id===SH.id); if(!a){closeSheet();return}
-    const e=ESITI[a.esito||"0"]; const w=(a.esito==="1"||a.esito==="3")?whenLabel(a.richiama):null; const tel=norm(a.telefono);
-    const st=(a.storico||[]).slice().reverse(); const curE=SH.newEsito||a.esito||"1";
+    const w=needsRich(a.esito)&&attiva(a)?whenLabel(a.richiama):null; const tel=norm(a.telefono);
+    const st=(a.storico||[]).slice().reverse(); const curE=SH.newEsito||a.esito||esText(1);
     html=shell(a.nome||(a.ignoto?"Cliente non noto":"Acquisizione"),`
     <div class="card" style="display:flex;flex-direction:column;gap:12px">
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><span class="pill ${e.c}"><i></i>${e.t}</span>${w?`<span class="when ${w.c}">Richiama: ${esc(w.t)}</span>`:""}${idleDays(a)>IDLE_DAYS&&a.esito!=="0"?`<span class="idle">Fermo da ${idleDays(a)} gg</span>`:""}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">${pill(a.esito)}${a.pratica&&a.pratica!=="Aperta"?`<span class="pill p0">${esc(a.pratica)}</span>`:""}${w?`<span class="when ${w.c}">Promemoria: ${esc(w.t)}</span>`:""}${isIdle(a)?`<span class="idle">Fermo da ${idleDays(a)} gg</span>`:""}</div>
       ${a.ignoto&&!a.nome&&!tel?`<p class="hint">Nome e recapiti del cliente non ancora noti. Quando li scopri, tocca "Modifica dati".</p>`:""}
-      ${tel?`<div class="phone"><span class="num">${esc(tel)}</span><a href="tel:${esc(digits(tel))}">Chiama</a><a href="https://wa.me/${esc(waNum(tel))}" target="_blank" rel="noopener">WhatsApp</a></div>`:""}
+      ${phoneLinks(tel,true)}
       <dl class="kv">
-        ${[a.tipo,a.uso].filter(Boolean).length?`<dt>Tipo</dt><dd>${esc([a.tipo,a.uso].filter(Boolean).join(" · "))}</dd>`:""}
-        ${a.gestito?`<dt>Gestito da</dt><dd>${esc(a.gestito==="Privato"?"Privato":"Altra agenzia"+(a.agenziaNome?" ("+a.agenziaNome+")":""))}${a.gestito==="Altra agenzia"&&norm(a.agenziaTel)?`<div class="phone" style="margin-top:6px"><span class="num" style="font-size:1.05rem">${esc(norm(a.agenziaTel))}</span><a href="tel:${esc(digits(a.agenziaTel))}">Chiama</a><a href="https://wa.me/${esc(waNum(a.agenziaTel))}" target="_blank" rel="noopener">WhatsApp</a></div>`:""}</dd>`:""}
+        ${a.cid?`<dt>Codice</dt><dd>${esc(a.cid)} <span class="hint">(nel gestionale)</span></dd>`:""}
+        ${a.email?`<dt>Email</dt><dd><a href="mailto:${esc(a.email)}">${esc(a.email)}</a></dd>`:""}
+        ${a.tipoContatto?`<dt>Tipo</dt><dd>${esc(a.tipoContatto)}</dd>`:""}
+        ${a.gestito?`<dt>Gestito da</dt><dd>${esc(a.gestito==="Privato"?"Privato":"Altra agenzia"+(a.agenziaNome?" ("+a.agenziaNome+")":""))}${a.gestito==="Altra agenzia"?phoneLinks(a.agenziaTel):""}</dd>`:""}
         ${a.descrizione?`<dt>Immobile</dt><dd>${esc(a.descrizione)}</dd>`:""}
+        ${esNum(a.esito)===2&&a.cosaInviare?`<dt>Da inviare</dt><dd>${esc(a.cosaInviare)}</dd>`:""}
         ${a.note?`<dt>Note</dt><dd>${esc(a.note)}</dd>`:""}
+        ${a.origine?`<dt>Origine</dt><dd>${esc(a.origine)}</dd>`:""}
         ${a.agente?`<dt>Agente</dt><dd>${esc(a.agente)}</dd>`:""}
         <dt>Inserito</dt><dd>${fmtD(a.creato)}</dd>
-        <dt>Ultima azione</dt><dd>${fmtD(a.ultimaAzione||a.creato)}</dd>
+        <dt>Ultima azione</dt><dd>${fmtD(lastAct(a))}</dd>
       </dl>
       ${fotoStrip(a.foto)}
-      ${a.via&&a.civico&&macroOf(a)?`<button class="linkrow" type="button" data-gociv="1"><span>${esc(addrOf(a))}</span><span class="chev">›</span></button>`:(addrOf(a)?`<p class="hint">${esc(addrOf(a))}</p>`:"")}
+      ${chiave(a)?`<button class="linkrow" type="button" data-gociv="1"><span>${esc(addrOf(a))}</span><span class="chev">›</span></button>`:(addrOf(a)?`<p class="hint">${esc(addrOf(a))}</p>`:"")}
     </div>
     <fieldset class="card"><legend>Registra attività</legend>
+      <div class="f"><label for="h-tipo">Tipo di azione</label>${selectOf("h-tipo",S.L.tipiAzione,SH.newTipo||S.L.tipiAzione[0])}</div>
       <div class="f"><label for="h-nota">Cosa è successo</label><textarea id="h-nota" placeholder="Es. chiamato, vuole valutazione a novembre"></textarea></div>
       <span class="lab">Nuovo esito</span>${esitoBtns(curE)}
-      ${richiamaBlock(SH.newRich||"",curE==="1"||curE==="3")}
+      ${richiamaBlock(SH.newRich!=null?SH.newRich:(a.richiama||""),needsRich(curE))}
+      ${inviaBlock(SH.newInv!=null?SH.newInv:a.cosaInviare,esNum(curE)===2)}
+      <div class="f"><label for="h-pratica">Pratica</label>${selectOf("h-pratica",S.L.pratiche,SH.newPrat||a.pratica||"Aperta")}</div>
       <button class="btn pri" type="button" data-addhist>Registra</button>
     </fieldset>
     <div><div class="grow" style="margin-bottom:8px"><span class="tag">Storico</span><span class="count">${st.length}</span></div>
-    ${st.length?`<ul class="hist">${st.map(s=>`<li><div class="d">${fmtD(s.data)}${s.agente?" · "+esc(s.agente):""}${s.esito&&ESITI[s.esito]?" · "+ESITI[s.esito].t:""}</div><div>${esc(s.nota||"")}</div></li>`).join("")}</ul>`:`<p class="hint">Nessuna attività registrata.</p>`}</div>`,
+    ${st.length?`<ul class="hist">${st.map(s=>`<li><div class="d">${fmtD(s.data)}${s.tipo?" · "+esc(s.tipo):""}${s.agente?" · "+esc(s.agente):""}${s.esito?" · "+esc(esShort(s.esito)):""}${s.prom?" · promemoria "+fmtD(s.prom):""}</div><div>${esc(s.nota||"")}</div></li>`).join("")}</ul>`:`<p class="hint">Nessuna attività registrata.</p>`}</div>`,
     `<button class="btn sec" type="button" data-editacq style="flex:1">Modifica dati</button>`);
   }
   else if(SH.type==="stab"){
     const s=SH.draft; const isNew=!SH.id; s.mercato=s.mercato||[];
-    const linked=S.acq.filter(a=>s.via&&s.civico&&sameCiv(a,s));
+    const linked=S.acq.filter(a=>sameCiv(a,s));
     html=shell(isNew?"Nuovo civico":`${cap(s.via)} ${civN(s.civico)}`,`
-    ${viaList()}
-    <div class="f"><label for="s-agente">Agente <span class="req">*</span></label>${agenteSelect("s-agente",s.agente||S.me)}</div>
+    <div class="f"><label for="s-agente">Agente <span class="req">*</span></label>${selectOf("s-agente",S.L.agenti,s.agente||S.me)}</div>
     <fieldset><legend>Indirizzo</legend>${addrFields(s,"s-")}</fieldset>
     <fieldset><legend>Stabile</legend>
-      <div class="f"><span class="lab">Tipo di stabile</span><div class="seg" data-seg="tipoStabile" style="display:grid;grid-template-columns:1fr 1fr">${TIPI_STAB.map(o=>`<button type="button" data-v="${o}" aria-pressed="${s.tipoStabile===o}">${o}</button>`).join("")}</div></div>
-      <div class="two"><div class="f"><span class="lab">Locali commerciali</span>${segBtns("commerciali",["Sì","No"],s.commerciali)}</div>
-      <div class="f"><span class="lab">Garage</span>${segBtns("garage",["Sì","No"],s.garage)}</div></div>
+      <div class="f"><span class="lab">Tipo di stabile</span><div class="seg" data-seg="tipoStabile" style="display:grid;grid-template-columns:1fr 1fr">${(S.L.tipiStabile.includes(s.tipoStabile)||!s.tipoStabile?S.L.tipiStabile:S.L.tipiStabile.concat([s.tipoStabile])).map(o=>`<button type="button" data-v="${esc(o)}" aria-pressed="${s.tipoStabile===o}">${esc(o)}</button>`).join("")}</div></div>
+      <div class="f"><span class="lab">Locali commerciali</span>${segBtns("commerciali",S.L.commerciali,s.commerciali)}</div>
+      <div class="f"><span class="lab">Garage</span>${segBtns("garage",S.L.garage,s.garage)}</div>
     </fieldset>
     ${fotoBlock(s.foto)}
-    <fieldset><legend>Appartamenti sul mercato</legend>
-      ${s.mercato.length?s.mercato.map(mkRow).join(""):`<p class="hint">Nessun appartamento in vendita o in affitto segnato.</p>`}
-      <button class="btn sec" type="button" data-mkadd style="width:100%">+ Aggiungi appartamento in vendita o affitto</button>
+    <fieldset><legend>In vendita o in affitto</legend>
+      ${s.mercato.length?s.mercato.map(mkRow).join(""):`<p class="hint">Nessun appartamento o locale in vendita o in affitto segnato.</p>`}
+      <button class="btn sec" type="button" data-mkadd style="width:100%">+ Aggiungi appartamento o locale</button>
     </fieldset>
-    <fieldset><legend>Note</legend>
+    <fieldset><legend>Amministratore e note</legend>
       <div class="two"><div class="f"><label for="s-amm">Amministratore</label><input id="s-amm" value="${esc(s.amministratore||"")}" autocomplete="off" placeholder="Nome o studio"></div>
       <div class="f"><label for="s-ammtel">Tel. amministratore</label><input id="s-ammtel" type="tel" inputmode="tel" value="${esc(s.ammTel||"")}" autocomplete="off"></div></div>
-      ${norm(s.ammTel)?`<div class="phone"><span class="num">${esc(norm(s.ammTel))}</span><a href="tel:${esc(digits(s.ammTel))}">Chiama</a><a href="https://wa.me/${esc(waNum(s.ammTel))}" target="_blank" rel="noopener">WhatsApp</a></div>`:""}
+      ${phoneLinks(s.ammTel,true)}
       <div class="f"><label for="s-note">Note sullo stabile</label><textarea id="s-note" placeholder="Es. citofono, portiere, stato della facciata">${esc(s.note||"")}</textarea></div>
     </fieldset>
     ${s.aggiornato?`<p class="hint">Ultimo aggiornamento ${fmtD(s.aggiornato)}${s.agente?" da "+esc(s.agente):""}</p>`:""}
@@ -691,11 +805,14 @@ function drawSheet(soft){
   }
   else if(SH.type==="who"){
     html=shell("Chi sei?",`<p class="hint">Il nome resta su questo telefono e compila da solo il campo Agente.</p>
-      <div class="seg esiti">${S.agenti.map(n=>`<button type="button" data-me="${esc(n)}" aria-pressed="${S.me===n}">${esc(n)}</button>`).join("")}<button type="button" data-me="" aria-pressed="${!S.me}">Nessuno, mostra tutti</button></div>`);
+      <div class="seg esiti">${S.L.agenti.map(n=>`<button type="button" data-me="${esc(n)}" aria-pressed="${S.me===n}">${esc(n)}</button>`).join("")}<button type="button" data-me="" aria-pressed="${!S.me}">Nessuno, mostra tutti</button></div>`);
   }
   else if(SH.type==="more"){
     html=shell("Altro",`
       <div class="card"><div class="grow"><span>Acquisizioni in archivio</span><b style="font-variant-numeric:tabular-nums">${S.acq.length}</b></div><div class="grow" style="margin-top:6px"><span>Civici censiti</span><b style="font-variant-numeric:tabular-nums">${S.stabili.length}</b></div></div>
+      <fieldset class="card"><legend>Gestionale</legend>
+      <p class="hint">${S.listeDalGestionale?"Agenti, zone, esiti e gli altri menu arrivano dal foglio Liste del gestionale. Per aggiungere una voce scrivila lì: compare qui entro pochi minuti.":"Il gestionale non ha ancora inviato i suoi menu: l'app usa quelli di base. Arrivano da soli quando il collegamento è acceso."}</p>
+      <p class="hint">Le schede salvate qui passano nel gestionale entro 5 minuti, e viceversa.</p></fieldset>
       <fieldset class="card"><legend>Esporta</legend><p class="hint">File CSV che si apre in Excel o si importa in Google Fogli.</p>
       <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn sec" type="button" data-exp="acq">Acquisizioni (.csv)</button><button class="btn sec" type="button" data-exp="stab">Stabili (.csv)</button></div></fieldset>
       <fieldset class="card"><legend>Modalità prova</legend>
@@ -704,52 +821,53 @@ function drawSheet(soft){
       ${S.test?`<div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn sec" type="button" data-seed>Carica dati di esempio</button><span id="clrZone"><button class="btn danger" type="button" data-askclr>Svuota archivio di prova</button></span></div>`:""}
       </fieldset>
       <fieldset class="card"><legend>Account</legend><p class="hint">Hai fatto l'accesso come <b>${esc(window.__userEmail?window.__userEmail():"")}</b>.</p>
-      <button class="btn sec" type="button" data-logout>Esci dall'account</button></fieldset>
-      <fieldset class="card"><legend>Agenti</legend><p class="hint">Un nome per riga.</p>
-      <div class="f"><textarea id="m-agenti" style="min-height:120px" aria-label="Elenco agenti">${esc(S.agenti.join("\n"))}</textarea></div>
-      <button class="btn pri" type="button" data-saveagenti>Salva elenco agenti</button></fieldset>`);
+      <button class="btn sec" type="button" data-logout>Esci dall'account</button></fieldset>`);
   }
   r.innerHTML=html;
-  if(keepNota&&$("#h-nota"))$("#h-nota").value=keepNota;
+  keep.forEach(([id,v])=>{if(v!=null&&$("#"+id))$("#"+id).value=v});
   if(soft&&scroll&&$(".sheet-b",r))$(".sheet-b",r).scrollTop=scroll;
 }
 
-/* collect form */
+/* ---------- lettura e salvataggio ---------- */
 function segVal(name){const b=document.querySelector(`[data-seg="${name}"] [aria-pressed="true"]`);return b?b.dataset.v:""}
 function val(id){const e=document.getElementById(id);return e?norm(e.value):""}
-function needsRich(es){return es==="1"||es==="3"}
+function txt(id){const e=document.getElementById(id);return e?String(e.value||"").trim():""}
 function collectStab(){
   const s=SH.draft;
-  Object.assign(s,{agente:val("s-agente"),macrozona:val("s-macro"),via:cap(val("s-via")),civico:civN(val("s-civico")),
-    tipoStabile:segVal("tipoStabile"),commerciali:segVal("commerciali"),garage:segVal("garage"),amministratore:val("s-amm"),ammTel:val("s-ammtel"),note:val("s-note")});
+  Object.assign(s,{agente:val("s-agente"),citta:val("s-citta"),zona:val("s-zona"),via:cap(val("s-via")),civico:civN(val("s-civico")),
+    tipoStabile:segVal("tipoStabile"),commerciali:segVal("commerciali"),garage:segVal("garage"),amministratore:val("s-amm"),ammTel:val("s-ammtel"),note:txt("s-note")});
   document.querySelectorAll("[data-mki]").forEach(i=>{const m=s.mercato[+i.dataset.mki];if(m)m[i.dataset.mkf]=norm(i.value)});
   return s;
 }
-
 function collectAcq(){
   const a=SH.draft;
-  Object.assign(a,{ignoto:!!(document.getElementById("f-ignoto")||{}).checked,agente:val("f-agente"),nome:val("f-nome"),telefono:val("f-tel"),tipo:segVal("tipo"),uso:segVal("uso"),gestito:segVal("gestito"),agenziaNome:val("f-agenzia"),agenziaTel:val("f-agtel"),
-    macrozona:val("f-macro"),via:val("f-via"),civico:val("f-civico"),descrizione:(document.getElementById("f-desc")||{}).value||"",
-    note:(document.getElementById("f-note")||{}).value||"",esito:segVal("esito")||a.esito,richiama:val("f-richiama")});
+  Object.assign(a,{ignoto:!!(document.getElementById("f-ignoto")||{}).checked,agente:val("f-agente"),origine:val("f-origine"),nome:val("f-nome"),telefono:val("f-tel"),email:val("f-email"),
+    tipoContatto:val("f-tipoc"),gestito:segVal("gestito"),agenziaNome:val("f-agenzia"),agenziaTel:val("f-agtel"),
+    citta:val("f-citta"),zona:val("f-zona"),via:val("f-via"),civico:val("f-civico"),descrizione:txt("f-desc"),
+    note:txt("f-note"),esito:segVal("esito")||a.esito,richiama:val("f-richiama"),cosaInviare:val("f-invia"),pratica:segVal("pratica")||a.pratica});
   return a;
 }
 async function saveAcq(){
   if(SH.uploading){toast("Aspetta che finisca il caricamento delle foto");return}
-  const es=segVal("esito")||"1";
-  const body={agente:val("f-agente"),nome:cap(val("f-nome")),telefono:val("f-tel"),tipo:segVal("tipo"),uso:segVal("uso"),
-    gestito:segVal("gestito"),agenziaNome:segVal("gestito")==="Altra agenzia"?cap(val("f-agenzia")):"",agenziaTel:segVal("gestito")==="Altra agenzia"?val("f-agtel"):"",
-    macrozona:val("f-macro"),via:cap(val("f-via")),civico:civN(val("f-civico")),
-    descrizione:val("f-desc"),note:val("f-note"),esito:es,richiama:needsRich(es)?val("f-richiama"):"",foto:(SH.draft.foto||[]).slice(0,40)};
+  const es=segVal("esito")||esText(1); const gest=segVal("gestito");
+  const body={agente:val("f-agente"),origine:val("f-origine"),nome:cap(val("f-nome")),telefono:val("f-tel"),email:val("f-email").toLowerCase(),tipoContatto:val("f-tipoc"),
+    gestito:gest,agenziaNome:gest==="Altra agenzia"?cap(val("f-agenzia")):"",agenziaTel:gest==="Altra agenzia"?val("f-agtel"):"",
+    citta:val("f-citta"),zona:val("f-zona"),via:cap(val("f-via")),civico:civN(val("f-civico")),
+    descrizione:txt("f-desc"),note:txt("f-note"),esito:es,richiama:needsRich(es)?val("f-richiama"):"",cosaInviare:esNum(es)===2?val("f-invia"):"",
+    pratica:segVal("pratica")||"Aperta",foto:(SH.draft.foto||[]).slice(0,40),aggDa:"app"};
+  body.stabile=chiave(body);
   if(!body.agente){toast("Scegli l'agente");return}
   body.ignoto=!!(document.getElementById("f-ignoto")||{}).checked;
-  if(body.ignoto){body.nome="";body.telefono="";
+  if(body.ignoto){body.nome="";body.telefono="";body.email="";
     if(!body.via&&!body.descrizione){toast("Senza dati del cliente servono almeno la via o una descrizione");return}}
   else if(!body.nome&&!body.telefono){toast("Inserisci nome o telefono, oppure spunta \"Non conosco nome e dati\"");return}
-  if(needsRich(es)&&!body.richiama){toast("Scegli quando richiamare");return}
+  if(body.via&&body.civico&&(!body.citta||!body.zona)){toast("Scegli città e zona: servono per collegare lo stabile");return}
+  if(needsRich(es)&&!body.richiama){toast("Con questo esito serve la data del promemoria");return}
   if(!S.db){toast("Archivio non raggiungibile: dati non salvati");return}
   const now=new Date().toISOString();
   if(!SH.id){
-    body.creato=now; body.ultimaAzione=now; body.storico=[{data:now,agente:body.agente,esito:es,nota:"Acquisizione inserita"}];
+    body.creato=now; body.ultimaAzione=now;
+    body.storico=[{rid:rid(),data:now,tipo:/telefono/i.test(body.origine)?"Chiamata":(/persona/i.test(body.origine)?"Sopralluogo":"Altro"),agente:body.agente,esito:es,nota:"Acquisizione inserita dall'app",prom:body.richiama,pratica:body.pratica}];
     if(await save(S.db.collection(C("acquisizioni")).doc(),body)){closeSheet();toast("Acquisizione salvata")}
   } else {
     if(await save(S.db.collection(C("acquisizioni")).doc(SH.id),body,true)){openSheet({type:"acqView",id:SH.id});toast("Modifiche salvate")}
@@ -757,27 +875,31 @@ async function saveAcq(){
 }
 async function addHist(){
   const a=S.acq.find(x=>x.id===SH.id); if(!a)return;
-  const nota=val("h-nota"); const es=segVal("esito")||a.esito; const rich=needsRich(es)?val("f-richiama"):"";
-  if(!nota&&es===a.esito&&rich===(a.richiama||"")){toast("Scrivi cosa è successo o cambia l'esito");return}
-  if(needsRich(es)&&!rich){toast("Scegli quando richiamare");return}
+  const nota=txt("h-nota"); const es=segVal("esito")||a.esito; const rich=needsRich(es)?val("f-richiama"):"";
+  const pr=val("h-pratica")||a.pratica||"Aperta"; const inv=esNum(es)===2?val("f-invia"):"";
+  if(!nota&&es===a.esito&&rich===(a.richiama||"")&&pr===(a.pratica||"Aperta")&&inv===(a.cosaInviare||"")){toast("Scrivi cosa è successo o cambia l'esito");return}
+  if(needsRich(es)&&!rich&&pr==="Aperta"){toast("Con questo esito serve la data del promemoria");return}
   const now=new Date().toISOString();
-  const storico=(a.storico||[]).concat([{data:now,agente:S.me||a.agente||"",esito:es,nota}]).slice(-200);
-  if(await save(S.db.collection(C("acquisizioni")).doc(a.id),{storico,esito:es,richiama:rich,ultimaAzione:now},true)){SH.newEsito=null;SH.newRich=null;drawSheet();toast("Attività registrata")}
+  const storico=(a.storico||[]).concat([{rid:rid(),data:now,tipo:val("h-tipo")||"Altro",agente:S.me||a.agente||"",esito:es,nota,prom:rich,pratica:pr}]).slice(-300);
+  if(await save(S.db.collection(C("acquisizioni")).doc(a.id),{storico,esito:es,richiama:rich,cosaInviare:inv,pratica:pr,ultimaAzione:now,aggDa:"app"},true)){
+    SH.newEsito=null;SH.newRich=null;SH.newInv=null;SH.newPrat=null;SH.newTipo=null;drawSheet();toast("Attività registrata")}
 }
 async function saveStab(){
   if(SH.uploading){toast("Aspetta che finisca il caricamento delle foto");return}
   const s=collectStab();
   if(!s.agente){toast("Scegli l'agente");return}
-  if(!s.macrozona||!s.via||!s.civico){toast("Servono macrozona, via e civico");return}
-  const mercato=(s.mercato||[]).filter(m=>m.contratto||m.gestore||m.piano||m.note||m.tel||m.agenzia||m.agTel).map(m=>({contratto:m.contratto||"",gestore:m.gestore||"",agenzia:m.gestore==="Agenzia"?(m.agenzia||""):"",agTel:m.gestore==="Agenzia"?(m.agTel||""):"",piano:m.piano||"",tel:m.tel||"",note:m.note||""}));
-  if(mercato.some(m=>!m.contratto)){toast("Indica vendita o affitto per ogni appartamento");return}
-  const b={agente:s.agente,macrozona:s.macrozona,via:s.via,civico:s.civico,tipoStabile:s.tipoStabile,commerciali:s.commerciali,garage:s.garage,mercato,foto:(s.foto||[]).slice(0,40),amministratore:s.amministratore,ammTel:s.ammTel,note:s.note,aggiornato:new Date().toISOString()};
+  if(!s.citta||!s.zona||!s.via||!s.civico){toast("Servono città, zona, via e civico");return}
+  const mercato=(s.mercato||[]).filter(m=>m.contratto||m.gestore||m.piano||m.note||m.tel||m.agenzia).map(m=>({mid:m.mid||rid(),contratto:m.contratto||"",tipoImm:m.tipoImm||"Appartamento",gestore:m.gestore||"",agenzia:m.agenzia||"",tel:m.tel||"",piano:m.piano||"",note:m.note||""}));
+  if(mercato.some(m=>!m.contratto)){toast("Indica vendita o affitto per ogni immobile");return}
+  const b={agente:s.agente,citta:s.citta,zona:s.zona,via:s.via,civico:s.civico,tipoStabile:s.tipoStabile,commerciali:s.commerciali,garage:s.garage,mercato,foto:(s.foto||[]).slice(0,40),amministratore:s.amministratore,ammTel:s.ammTel,note:s.note,aggiornato:new Date().toISOString(),aggDa:"app"};
+  b.key=chiave(b);
+  if(s.fotoLink)b.fotoLink=s.fotoLink;
   const dup=S.stabili.find(x=>x.id!==SH.id&&sameCiv(x,b));
   if(dup){toast("Questo civico ha già una scheda: la apro");openSheet({type:"stab",id:dup.id,draft:JSON.parse(JSON.stringify(dup))});return}
   if(!S.db){toast("Archivio non raggiungibile: dati non salvati");return}
   const ref=SH.id?S.db.collection(C("stabili")).doc(SH.id):S.db.collection(C("stabili")).doc();
-  if(await save(ref,b)){
-    S.path=[b.macrozona,key(b.via)]; S.tab="zone"; lsSet("riz-tab","zone");
+  if(await save(ref,b,!!SH.id)){
+    S.path=[key(b.citta),key(b.zona),key(b.via)]; S.tab="zone"; S.zq=""; lsSet("riz-tab","zone");
     closeSheet();render();toast("Scheda salvata");
   }
 }
@@ -791,25 +913,27 @@ async function exportCsv(which){
   if(!S.dl){toast("Esportazione non disponibile in questa vista");return}
   let rows,fn;
   if(which==="acq"){
-    rows=[["Agente","Nome","Telefono","Contratto","Uso","Gestito da","Agenzia","Tel. agenzia","Macrozona","Via","Civico","Descrizione","Note","Esito","Richiama","Inserito","Ultima azione","Storico"]]
-      .concat(S.acq.map(a=>[a.agente,a.nome||(a.ignoto?"Cliente non noto":""),a.telefono,a.tipo,a.uso,a.gestito,a.agenziaNome,a.agenziaTel,macroOf(a),a.via,a.civico,a.descrizione,a.note,(ESITI[a.esito]||{}).t,fmtD(a.richiama),fmtD(a.creato),fmtD(a.ultimaAzione),(a.storico||[]).map(s=>`${fmtD(s.data)} ${s.agente||""}: ${s.nota||""}`).join(" | ")]));
+    rows=[["Codice","Inserito","Origine","Agente","Nome","Telefono","Email","Tipo contatto","Città","Zona","Via","Civico","Stabile","Descrizione","Note","Esito","Data promemoria","Cosa inviare","Pratica","Gestito da","Agenzia","Tel. agenzia","Ultima azione","Storico"]]
+      .concat(S.acq.map(a=>[a.cid,fmtD(a.creato),a.origine,a.agente,a.nome||(a.ignoto?"Cliente non noto":""),a.telefono,a.email,a.tipoContatto,a.citta,a.zona,a.via,a.civico,chiave(a),a.descrizione,a.note,a.esito,fmtD(a.richiama),a.cosaInviare,a.pratica,a.gestito,a.agenziaNome,a.agenziaTel,fmtD(lastAct(a)),(a.storico||[]).map(s=>`${fmtD(s.data)} ${s.tipo||""} ${s.agente||""}: ${s.nota||""}`).join(" | ")]));
     fn=`acquisizioni-${todayISO()}.csv`;
   } else {
-    rows=[["Agente","Macrozona","Via","Civico","Tipo stabile","Locali commerciali","Garage","In vendita","In affitto","Da privati","Da agenzie","Dettaglio appartamenti","Amministratore","Tel. amministratore","Note","Aggiornato"]]
-      .concat(S.stabili.map(s=>{const c=mkCounts(s);return [s.agente,macroOf(s),s.via,s.civico,s.tipoStabile,s.commerciali,s.garage,c.v,c.a,c.p,c.ag,
-        (s.mercato||[]).map(m=>[m.contratto,m.gestore==="Agenzia"?("agenzia "+(m.agenzia||"")+(m.agTel?" tel. "+m.agTel:"")).trim():m.gestore,m.piano,m.tel,m.note].filter(Boolean).join(", ")).join(" | "),s.amministratore,s.ammTel,s.note,fmtD(s.aggiornato)]}));
+    rows=[["Stabile","Città","Zona","Via","Civico","Tipo stabile","Locali commerciali","Garage","In vendita","In affitto","Da privati","Da agenzie/società","Dettaglio","Amministratore","Tel. amministratore","Note","Rilevato da","Aggiornato"]]
+      .concat(S.stabili.map(s=>{const c=mkCounts(s);return [chiave(s),s.citta,s.zona,s.via,s.civico,s.tipoStabile,s.commerciali,s.garage,c.v,c.a,c.p,c.ag,
+        (s.mercato||[]).map(m=>[m.contratto,m.tipoImm,m.gestore,m.agenzia,m.tel,m.piano,m.note].filter(Boolean).join(", ")).join(" | "),s.amministratore,s.ammTel,s.note,s.agente,fmtD(s.aggiornato)]}));
     fn=`stabili-${todayISO()}.csv`;
   }
   try{await S.dl.save({filename:fn,data:csv(rows)})}catch(e){if(e&&e.code!=="declined")toast("Esportazione non riuscita")}
 }
-function curNames(){const T=tree();const nm=[];let n={kids:T};S.path.forEach(k=>{n=n&&n.kids.get(k);if(n)nm.push(n.name)});return nm}
-function openCiv(macro,via,civ){
-  const st=S.stabili.find(x=>sameCiv(x,{macrozona:macro,via,civico:civ}));
+function curNames(){const T=tree();const nm=[];let n={kids:T};S.path.forEach(k=>{n=n&&n.kids.get(k);if(n)nm.push(n.name)});return nm.map(x=>x===NOCITY||x===NOZONE?"":x)}
+function openCiv(citta,zona,via,civ){
+  const probe={citta,zona,via,civico:civ};
+  const st=S.stabili.find(x=>sameCiv(x,probe));
   if(st)openSheet({type:"stab",id:st.id,draft:JSON.parse(JSON.stringify(st))});
-  else openSheet({type:"stab",id:null,draft:{macrozona:macro,via:cap(via),civico:civN(civ),agente:S.me,mercato:[]}});
+  else openSheet({type:"stab",id:null,draft:{citta,zona,via:cap(via),civico:civN(civ),agente:S.me,mercato:[]}});
 }
+function newAcqDraft(x){return Object.assign({esito:esText(1),richiama:todayISO(1),agente:S.me,pratica:"Aperta"},x||{})}
 
-/* ---------- events ---------- */
+/* ---------- eventi ---------- */
 document.addEventListener("click",e=>{
   const t=e.target.closest("button,a"); if(!t)return;
   const d=t.dataset;
@@ -823,70 +947,84 @@ document.addEventListener("click",e=>{
   if(d.lbgo!=null){lightbox(lightbox.list,+d.lbgo);return}
   if(d.lb!=null&&SH){const list=SH.type==="acqView"?((S.acq.find(x=>x.id===SH.id)||{}).foto):(SH.draft&&SH.draft.foto);lightbox(list||[],+d.lb);return}
   if(d.phdel!=null&&SH&&SH.draft){collectAny();SH.draft.foto.splice(+d.phdel,1);redrawForm();toast("Foto tolta: tocca Salva per confermare");return}
+  if(d.sugg){const [pfx,via,citta,zona]=JSON.parse(d.sugg);const i=document.getElementById(pfx+"via");if(i)i.value=via;
+    const c=document.getElementById(pfx+"citta"),z=document.getElementById(pfx+"zona");
+    if(c&&citta&&!c.value)c.value=citta; if(z&&zona&&!z.value)z.value=zona;
+    const box=document.getElementById(pfx+"sugg");if(box)box.innerHTML="";const n=document.getElementById(pfx+"civico");if(n)n.focus();return}
   if(d.tab){S.tab=d.tab;lsSet("riz-tab",d.tab);render();window.scrollTo(0,0);return}
   if(t.id==="whoBtn"){openSheet({type:"who"});return}
   if(t.id==="moreBtn"){openSheet({type:"more"});return}
   if(t.id==="fab"){
-    if(S.tab==="zone"){const nm=curNames();openSheet({type:"stab",id:null,draft:{macrozona:nm[0]||"",via:nm[1]||"",agente:S.me,mercato:[]}})}
-    else openSheet({type:"acqForm",id:null,draft:{esito:"1",richiama:todayISO(1),agente:S.me}});
+    if(S.tab==="zone"){const nm=curNames();openSheet({type:"stab",id:null,draft:{citta:nm[0]||"",zona:nm[1]||"",via:nm[2]||"",agente:S.me,mercato:[]}})}
+    else openSheet({type:"acqForm",id:null,draft:newAcqDraft()});
     return;
   }
   if(d.filtro){S.filtro=d.filtro;render();return}
   if(d.zf){S.zf=d.zf;render();return}
+  if(d.allzones!=null){S.allZones=true;render();return}
   if(d.openAcq!=null){openSheet({type:"acqView",id:d.openAcq});return}
-  if(d.crumb!=null){S.path=S.path.slice(0,+d.crumb);render();return}
+  if(d.crumb!=null){S.path=S.path.slice(0,+d.crumb);S.allZones=false;render();return}
   if(d.go!=null){S.path=S.path.concat([d.go]);render();window.scrollTo(0,0);return}
-  if(d.civ!=null){const nm=curNames();openCiv(nm[0],nm[1],d.civ);return}
-  if(d.newciv!=null){const nm=curNames();openSheet({type:"stab",id:null,draft:{macrozona:nm[0],via:nm[1],agente:S.me,mercato:[]}});return}
+  if(d.govia){const p=JSON.parse(d.govia);S.path=p.map(key);S.zq="";render();window.scrollTo(0,0);return}
+  if(d.civ!=null){const nm=curNames();openCiv(nm[0],nm[1],nm[2],d.civ);return}
+  if(d.newciv!=null){const nm=curNames();openSheet({type:"stab",id:null,draft:{citta:nm[0],zona:nm[1],via:nm[2],agente:S.me,mercato:[]}});return}
   if(d.close!=null){ if(SH&&SH.type==="acqForm"&&SH.id){openSheet({type:"acqView",id:SH.id})} else closeSheet(); return}
   if(d.me!=null){S.me=d.me;lsSet("riz-me",d.me);if(S.filtro==="mie"&&!S.me)S.filtro="tutti";closeSheet();render();return}
   if(d.saveacq!=null){saveAcq();return}
   if(d.savestab!=null){saveStab();return}
   if(d.addhist!=null){addHist();return}
   if(d.editacq!=null){const a=S.acq.find(x=>x.id===SH.id);if(a)openSheet({type:"acqForm",id:a.id,draft:Object.assign({},a)});return}
-  if(d.gociv!=null){const a=S.acq.find(x=>x.id===SH.id);if(!a)return;S.path=[macroOf(a),key(a.via)];S.tab="zone";lsSet("riz-tab","zone");closeSheet();render();openCiv(macroOf(a),a.via,a.civico);return}
-  if(d.acqhere!=null){const s=collectStab();openSheet({type:"acqForm",id:null,draft:{macrozona:s.macrozona,via:s.via,civico:s.civico,esito:"1",richiama:todayISO(1),agente:s.agente||S.me}});return}
-  if(d.mkadd!=null){collectStab();SH.draft.mercato.push({contratto:"",gestore:""});drawSheet(true);const sb=$(".sheet-b");const last=document.querySelectorAll(".mk");if(last.length)last[last.length-1].scrollIntoView({block:"center"});return}
+  if(d.gociv!=null){const a=S.acq.find(x=>x.id===SH.id);if(!a)return;S.path=[key(a.citta),key(a.zona),key(cap(a.via))];S.tab="zone";S.zq="";lsSet("riz-tab","zone");closeSheet();render();openCiv(a.citta,a.zona,a.via,a.civico);return}
+  if(d.acqhere!=null){const s=collectStab();openSheet({type:"acqForm",id:null,draft:newAcqDraft({citta:s.citta,zona:s.zona,via:s.via,civico:s.civico,agente:s.agente||S.me})});return}
+  if(d.mkadd!=null){collectStab();SH.draft.mercato.push({mid:rid(),contratto:"",tipoImm:"Appartamento",gestore:""});drawSheet(true);const last=document.querySelectorAll(".mk");if(last.length)last[last.length-1].scrollIntoView({block:"center"});return}
   if(d.mkdel!=null){collectStab();SH.draft.mercato.splice(+d.mkdel,1);drawSheet(true);return}
-  if(d.askdel!=null){$("#delZone").innerHTML=`<div class="confirm"><span style="flex:1">Eliminare definitivamente?</span><button class="btn danger" type="button" data-dodel>Sì, elimina</button><button class="btn sec" type="button" data-nodel>Annulla</button></div>`;return}
+  if(d.askdel!=null){const msg=SH&&SH.type==="acqForm"?"Eliminare definitivamente? Sparisce anche dal gestionale.":"Eliminare definitivamente la scheda?";
+    $("#delZone").innerHTML=`<div class="confirm"><span style="flex:1">${msg}</span><button class="btn danger" type="button" data-dodel>Sì, elimina</button><button class="btn sec" type="button" data-nodel>Annulla</button></div>`;return}
   if(d.nodel!=null){$("#delZone").innerHTML=`<button class="btn danger" type="button" data-askdel>Elimina</button>`;return}
   if(d.dodel!=null){doDelete();return}
   if(d.exp){exportCsv(d.exp);return}
-  if(d.saveagenti!=null){const n=[...new Set(($("#m-agenti").value||"").split("\n").map(cap).filter(Boolean))];if(!n.length){toast("Inserisci almeno un nome");return}
-    if(S.db)save(S.db.doc("impostazioni/agenti"),{nomi:n}).then(ok=>{if(ok){toast("Elenco agenti salvato");closeSheet()}});return}
-  // market row toggles
   const mk=t.closest("[data-mk]");
   if(mk&&t.dataset.v!=null&&SH&&SH.type==="stab"){
     collectStab(); const m=SH.draft.mercato[+mk.dataset.mk]; if(!m)return; const f=mk.dataset.mkf;
-    m[f]=m[f]===t.dataset.v?"":t.dataset.v; drawSheet(true); return;
+    m[f]=m[f]===t.dataset.v&&f!=="tipoImm"?"":t.dataset.v; drawSheet(true); return;
   }
-  // seg toggles
   const seg=t.closest("[data-seg]");
   if(seg&&t.dataset.v!=null){
     const name=seg.dataset.seg; const was=t.getAttribute("aria-pressed")==="true";
     seg.querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed","false"));
-    if(!was||name==="esito")t.setAttribute("aria-pressed","true");
+    if(!was||name==="esito"||name==="pratica")t.setAttribute("aria-pressed","true");
     if(name==="gestito"){const w=$("#agWrap");if(w)w.hidden=!(t.getAttribute("aria-pressed")==="true"&&t.dataset.v==="Altra agenzia")}
-    if(name==="esito"){const w=$("#richWrap");if(w)w.hidden=!needsRich(t.dataset.v);if(SH&&SH.type==="acqView")SH.newEsito=t.dataset.v;
-      if(needsRich(t.dataset.v)&&!val("f-richiama")){const i=$("#f-richiama");if(i)i.value=todayISO(1)}}
+    if(name==="esito"){const v=t.dataset.v;const w=$("#richWrap");if(w)w.hidden=!needsRich(v);const iw=$("#invWrap");if(iw)iw.hidden=esNum(v)!==2;
+      if(SH&&SH.type==="acqView")SH.newEsito=v;
+      if(needsRich(v)&&!val("f-richiama")){const i=$("#f-richiama");if(i){i.value=todayISO(1);if(SH&&SH.type==="acqView")SH.newRich=i.value}}}
     if(name==="rich"){const i=$("#f-richiama");if(i)i.value=was?"":t.dataset.v;if(SH&&SH.type==="acqView")SH.newRich=i?i.value:""}
   }
 });
 document.addEventListener("input",e=>{
-  if(e.target.id==="q"){S.q=e.target.value;clearTimeout(render.t);render.t=setTimeout(render,120)}
-  if(e.target.id==="f-richiama"){document.querySelectorAll('[data-seg="rich"] button').forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.v===e.target.value)));if(SH&&SH.type==="acqView")SH.newRich=e.target.value}
+  const id=e.target.id;
+  if(id==="q"){S.q=e.target.value;clearTimeout(render.t);render.t=setTimeout(render,120)}
+  if(id==="zq"){S.zq=e.target.value;clearTimeout(render.t);render.t=setTimeout(render,120)}
+  if(e.target.dataset&&e.target.dataset.viaq){drawSugg(e.target.dataset.viaq)}
+  if(id==="f-richiama"){document.querySelectorAll('[data-seg="rich"] button').forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.v===e.target.value)));if(SH&&SH.type==="acqView")SH.newRich=e.target.value}
+  if(id==="f-invia"&&SH&&SH.type==="acqView")SH.newInv=e.target.value;
 });
 document.addEventListener("change",e=>{
-  if(e.target.id==="m-test"){setTest(e.target.checked);drawSheet(true);toast(e.target.checked?"Modalità prova attiva":"Sei tornato all'archivio vero");return}
-  if(e.target.id==="f-ignoto"){const w=$("#clienteDati");if(w)w.hidden=e.target.checked}
-  if(e.target.id==="ph-cam"||e.target.id==="ph-gal"){const fs=[...(e.target.files||[])].slice(0,20);e.target.value="";addPhotos(fs)}
+  const id=e.target.id;
+  if(id==="m-test"){setTest(e.target.checked);drawSheet(true);toast(e.target.checked?"Modalità prova attiva":"Sei tornato all'archivio vero");return}
+  if(id==="f-ignoto"){const w=$("#clienteDati");if(w)w.hidden=e.target.checked}
+  if(id==="h-pratica"&&SH)SH.newPrat=e.target.value;
+  if(id==="h-tipo"&&SH)SH.newTipo=e.target.value;
+  if(id==="f-zona"||id==="s-zona"){const p=id[0]+"-citta";const c=document.getElementById(p);if(c&&!c.value){const g=cittaDaZona(e.target.value);if(S.L.citta.includes(g))c.value=g}}
+  if(id==="ph-cam"||id==="ph-gal"){const fs=[...(e.target.files||[])].slice(0,20);e.target.value="";addPhotos(fs)}
 });
+document.addEventListener("focusout",e=>{if(e.target.dataset&&e.target.dataset.viaq){const p=e.target.dataset.viaq;setTimeout(()=>{const b=document.getElementById(p+"sugg");if(b&&!b.contains(document.activeElement))b.innerHTML=""},250)}});
 document.addEventListener("keydown",e=>{if(e.key==="Escape"){if($("#lbRoot").innerHTML)lightbox(null);else if(SH)closeSheet()}});
 
 document.documentElement.classList.toggle("is-test",S.test);
 window.__back=function(){
   if($("#lbRoot").innerHTML){lightbox(null);return true}
   if(SH){const c=document.querySelector("[data-close]");if(c)c.click();else closeSheet();return true}
+  if(S.tab==="zone"&&S.zq){S.zq="";render();return true}
   if(S.tab==="zone"&&S.path.length){S.path=S.path.slice(0,-1);render();return true}
   if(S.tab!=="oggi"){S.tab="oggi";lsSet("riz-tab","oggi");render();return true}
   return false;
