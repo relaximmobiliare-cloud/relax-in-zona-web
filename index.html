@@ -854,10 +854,13 @@ function drawSheet(soft){
 }
 
 /* ---------- lettura e salvataggio ---------- */
+/* nome e cognome in parole semplici: minuscolo, senza accenti, in qualsiasi ordine ("Rossi Mario" = "mario rossi") */
+function nameTok(n){return String(n||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9 ]/g," ").split(" ").filter(w=>w.length>=2)}
 function checkDup(){
   const w=document.getElementById("dupWrap"); if(!w||!SH)return;
-  const ph=normPh(val("f-tel")), nm=key(val("f-nome"));
-  const hit=S.acq.filter(a=>a.id!==SH.id&&((ph.length>=6&&normPh(a.telefono)===ph)||(nm.length>=5&&key(a.nome)===nm))).slice(0,3);
+  const ph=normPh(val("f-tel")), nt=nameTok(val("f-nome"));
+  const nameHit=a=>{if(nt.length<2)return false;const t=nameTok(a.nome);return nt.every(w=>t.includes(w))};
+  const hit=S.acq.filter(a=>a.id!==SH.id&&((ph.length>=6&&normPh(a.telefono)===ph)||nameHit(a))).slice(0,3);
   w.innerHTML=hit.length?`<div class="dup"><b>Attenzione: ${hit.length===1?"questo cliente sembra già presente":"ci sono già clienti simili"}</b>
     ${hit.map(a=>`<div class="dup-r"><span>${esc(a.nome||"Senza nome")} · ${esc(norm(a.telefono)||"senza telefono")}<small>${esc([a.agente?"inserito da "+a.agente:"",fmtD(a.creato),esShort(a.esito)].filter(Boolean).join(" · "))}</small></span><button type="button" class="btn sec" data-dupopen="${esc(a.id)}">Apri la scheda</button></div>`).join("")}
     <small>Se è lo stesso cliente, apri la sua scheda e registra lì l'attività. Se è un'altra persona, continua pure.</small></div>`:"";
